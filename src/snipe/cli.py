@@ -242,6 +242,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         current = item.current
         print()
         print(paint(retailer_label(item.retailer), "bold"))
+        print(paint(f"  {item.retailer.url}", "dim"))
         if item.retailer.seller:
             seller_type = item.retailer.seller_type.replace("_", " ") if item.retailer.seller_type else "unspecified"
             print(f"  Seller: {item.retailer.seller} ({seller_type})")
@@ -291,7 +292,7 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
 def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None) -> int:
     store = Store(directory)
     session = requests.Session()
-    warnings: list[str] = []
+    warnings: list[tuple[str, str | None]] = []
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)
@@ -301,18 +302,23 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long)
             for product, checked in results:
                 if not product.retailers:
-                    warnings.append(format_warning("NO_VENDORS", product.name))
+                    warnings.append((format_warning("NO_VENDORS", product.name), None))
                 if long:
                     print()
                     product_report(track_name, product, checked, long=True, bounds=track_bound, legend=legend)
                 for item in checked:
                     if item.warning:
-                        warnings.append(item.warning)
+                        # Retailer-specific warnings are actionable: retain the
+                        # configured URL so terminal users can inspect the page.
+                        url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:")) else None
+                        warnings.append((item.warning, url))
         if warnings:
             print()
             print(paint("WARNINGS", "yellow", "bold"))
-            for warning in warnings:
-                print(f"  - {warning}")
+            for warning, url in warnings:
+                print(f"- {warning}")
+                if url:
+                    print(paint(f"  {url}", "dim"))
     finally:
         clear_progress()
         session.close()
@@ -371,7 +377,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
-    verbosity.add_argument("--long", dest="long", action="store_true", help="include per-product tables, Details, and notes")
+    verbosity.add_argument("--long", dest="long", action="store_true", help="include per-product tables, Details, notes, and vendor URLs")
     parser.set_defaults(long=False)
     args = parser.parse_intermixed_args(argv)
     global _COLOR

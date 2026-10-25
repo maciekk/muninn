@@ -49,7 +49,7 @@ Durations accept positive `m`, `h`, or `d` values, such as `30m`, `2h`, or `1d`.
 Each track begins with a cross-product retailer comparison sorted by desirability
 (highest first), then current price (lowest first) within each rating. Unrated
 products sort after rated ones; missing prices sort last within a rating. The
-`Rating` column is shown in the overview, including `--short` mode. In `--long` mode each product also has a retailer table, a Product Details section for its rating and notes, and separate vendor sections with observation count and numeric low/high. Cache timestamps are shown dimmed at the end of each vendor section.
+`Rating` column is shown in the overview, including `--short` mode. In `--long` mode each product also has a retailer table, a Product Details section for its rating and notes, and separate vendor sections with the full vendor URL, observation count, and numeric low/high. Vendor URLs and cache timestamps are shown dimmed so URLs remain easy to click or copy.
 
 - `TARGET MET!` — current price is at or below the product target.
 - `NEW LOW!` — current price is the lowest successful observation stored for that URL.

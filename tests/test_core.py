@@ -143,6 +143,7 @@ def test_marketplace_seller_is_flagged_in_reports(capsys):
     product_report("nvme", product, [item], long=True)
     output = capsys.readouterr().out
     assert "Newegg Canada [3P]" in output
+    assert "  https://newegg.ca/p/example" in output
     assert "Seller: Marketplace Shop (third party)" in output
 
 
@@ -174,7 +175,7 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     assert "NVME: DRIVE" not in short
     assert "Product Details" not in short
     assert "WARNINGS" in short
-    assert "  - NO_VENDORS: Drive" in short
+    assert "- NO_VENDORS: Drive" in short
 
     report(tracks, tmp_path, long=True)
     detailed = capsys.readouterr().out
@@ -182,6 +183,30 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     assert "NVME: DRIVE" in detailed
     assert "Product Details" in detailed
     assert "Buying rationale" in detailed
+
+
+def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
+    from snipe import cli
+    from snipe.config import Product, Retailer
+
+    retailer = Retailer("Shop", "https://example.test/drive", 7200)
+    product = Product("Drive", None, (retailer,))
+    for warning in (
+        "FETCH_FAILED: Drive / Shop; using stale data (timed out)",
+        "NO_CACHE: Drive / Shop",
+        "PRICE_NOT_FOUND: Drive / Shop; using prior price if available",
+    ):
+        monkeypatch.setattr(
+            cli,
+            "refresh_if_needed",
+            lambda store, product, retailer, session, current_time, vendor_delay: cli.Checked(
+                retailer, [], False, warning
+            ),
+        )
+        cli.report([("nvme", [product])], tmp_path)
+        output = capsys.readouterr().out
+        assert f"- {warning}\n  https://example.test/drive" in output
+
 
 
 def test_desirability_validation(tmp_path):

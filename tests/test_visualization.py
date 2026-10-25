@@ -124,6 +124,21 @@ def test_invalid_bounds(low, high):
         validate_bounds((Decimal(low), Decimal(high)))
 
 
+def test_help_subcommand_matches_help_option(capsys):
+    import snipe.cli as cli
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(['help'])
+    subcommand_output = capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as option_exit_info:
+        cli.main(['--help'])
+    option_output = capsys.readouterr().out
+
+    assert exit_info.value.code == option_exit_info.value.code == 0
+    assert subcommand_output == option_output
+
+
 def test_cli_range_options(monkeypatch, tmp_path):
     import snipe.cli as cli
     from unittest.mock import Mock

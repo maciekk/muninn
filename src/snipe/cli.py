@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
-    parser.add_argument("command_or_track", nargs="?", help="'check', 'reset', or the first track name")
+    parser.add_argument("command_or_track", nargs="?", help="'check', 'reset', 'help', or the first track name")
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
@@ -364,6 +364,9 @@ def main(argv: list[str] | None = None) -> None:
     global _COLOR
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
     command = args.command_or_track
+    if command == "help":
+        parser.print_help()
+        raise SystemExit(0)
     names = args.tracks if command in {None, "check", "reset"} else [command, *args.tracks]
     try:
         if args.vendor and command != "reset":

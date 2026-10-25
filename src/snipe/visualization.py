@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 DEFAULT_BOUNDS = (Decimal(500), Decimal(1000))
 RANGE_WIDTH = 17
-RANGE_LEGEND = "Range: ● now, T target, ◎ both in same cell; ├─┤ low–high, · outside; shared table scale"
+RANGE_LEGEND = "● now · T target · ◎ both · < > outside"
 
 
 def price_range(prices: list[Decimal], target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None) -> str:

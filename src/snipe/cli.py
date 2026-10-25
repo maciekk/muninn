@@ -202,10 +202,10 @@ def style_cell(value: str, column: str) -> str:
 
 
 def range_legend(bounds: tuple[Decimal, Decimal] | None) -> None:
-    if bounds is not None:
-        print(paint(f"Range scale: {money(bounds[0])} to {money(bounds[1])} (same for every row)", "dim"))
-    print(paint(RANGE_LEGEND, "dim"))
-    print(paint("< / >: observed price or target outside scale (edge markers take precedence)", "dim"))
+    scale = f"{money(bounds[0])}–{money(bounds[1])}  " if bounds is not None else ""
+    print()
+    print(paint(f"Range: {scale}{RANGE_LEGEND}", "dim"))
+    print()
 
 
 def product_report(track_name: str, product: Product, checked: list[Checked], long: bool = False, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
@@ -226,7 +226,8 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
     if not long:
         return
 
-    print()
+    if not legend:
+        print()
     print(paint("Product Details", "bold"))
     if product.desirability is not None:
         print(f"  Desirability: {product.desirability}/10")

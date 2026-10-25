@@ -90,7 +90,9 @@ def test_shared_scale_places_equal_prices_in_same_column():
     assert all(len(row) == RANGE_WIDTH for row in (first, second, third))
 
 
-def test_overview_uses_configured_scale(capsys):
+def test_overview_uses_configured_scale(capsys, monkeypatch):
+    import snipe.cli as cli
+    monkeypatch.setattr(cli, '_COLOR', False)
 
     retailer = Retailer('Vendor', 'https://example.com', 7200)
     product = Product('Drive', Decimal(500), (retailer,))
@@ -101,7 +103,8 @@ def test_overview_uses_configured_scale(capsys):
     results = [(product, [item]), (other, [other_item])]
     track_overview('nvme', results, bounds=(Decimal(500), Decimal(900)), legend=True)
     output = capsys.readouterr().out
-    assert 'Range scale: $500.00 to $900.00' in output
+    assert 'Range: $500.00–$900.00  ● now · T target · ◎ both · < > outside' in output
+    assert output.splitlines()[-3:] == ['', 'Range: $500.00–$900.00  ● now · T target · ◎ both · < > outside', '']
     assert price_range([Decimal(700)], Decimal(550), (Decimal(500), Decimal(900))) in output
 
 

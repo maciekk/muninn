@@ -60,7 +60,7 @@ def fetch_html(url: str, state_dir: Path, interactive: bool = False) -> str:
                     raise FetchError("browser navigation failed: no response")
                 if interactive:
                     try:
-                        input("Press Enter once the browser window renders: ")
+                        input("\n--Press Return once page renders--")
                     except EOFError as exc:
                         raise FetchError("interactive browser fetch needs an attached terminal") from exc
                     page.wait_for_timeout(2_000)

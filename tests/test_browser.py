@@ -133,7 +133,7 @@ def test_browser_transport_cleanup(tmp_path, monkeypatch):
     monkeypatch.setattr('builtins.input', prompt)
     assert browser.fetch_html('https://example.com', tmp_path, interactive=True) == '<h1>Drive</h1>'
     assert manager.chromium.launch_persistent_context.call_args.kwargs['headless'] is False
-    prompt.assert_called_once()
+    prompt.assert_called_once_with('\n--Press Return once page renders--')
     page.content.return_value = '<input id="captchacharacters">'
     with pytest.raises(browser.FetchError):
         browser.fetch_html('https://example.com', tmp_path)

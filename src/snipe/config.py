@@ -21,6 +21,8 @@ class Retailer:
     price_selector: str | None = None
     fetcher: str = "http"
     retry_seconds: int = DEFAULT_RETRY_SECONDS
+    seller: str | None = None
+    seller_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,11 +92,18 @@ def load(path: Path) -> tuple[Product, ...]:
             fetcher = raw.get("fetcher", "http")
             if fetcher not in ("http", "browser", "interactive"):
                 raise ValueError("fetcher must be http, browser, or interactive")
+            seller = raw.get("seller")
+            if seller is not None and (not isinstance(seller, str) or not seller.strip()):
+                raise ValueError("seller must be a non-empty string")
+            seller_type = raw.get("seller_type")
+            if seller_type not in (None, "first_party", "third_party"):
+                raise ValueError("seller_type must be first_party or third_party")
             retailers.append(Retailer(
                 raw["name"], raw["url"],
                 parse_duration(raw["refresh_after"]) if "refresh_after" in raw else product_delay,
                 selector, fetcher,
                 parse_duration(raw["retry_after"]) if "retry_after" in raw else product_retry_delay,
+                seller.strip() if seller is not None else None, seller_type,
             ))
         raw_notes = raw_product.get("notes", [])
         if isinstance(raw_notes, str):

@@ -18,12 +18,16 @@ def test_duration_and_config(tmp_path: Path):
         url: https://www.newegg.ca/p/example
         refresh_after: 30m
         retry_after: 15m
+        seller: Marketplace Shop
+        seller_type: third_party
 """)
     product = load(config)[0]
     assert parse_duration("2h") == 7200
     assert product.target_price == Decimal("100")
     assert product.retailers[0].refresh_seconds == 1800
     assert product.retailers[0].retry_seconds == 900
+    assert product.retailers[0].seller == "Marketplace Shop"
+    assert product.retailers[0].seller_type == "third_party"
 
 
 def test_single_product_file(tmp_path: Path):
@@ -95,6 +99,20 @@ def test_reset_marks_matching_retailers_due(tmp_path: Path):
         assert store.latest_attempt(amazon.url).fetched_at == at
     finally:
         store.close()
+
+
+def test_marketplace_seller_is_flagged_in_reports(capsys):
+    from snipe.cli import Checked, product_report
+    from snipe.config import Product, Retailer
+
+    retailer = Retailer("Newegg Canada", "https://newegg.ca/p/example", 7200,
+                        seller="Marketplace Shop", seller_type="third_party")
+    product = Product("Drive", None, (retailer,))
+    item = Checked(retailer, [], False, None)
+    product_report("nvme", product, [item], long=True)
+    output = capsys.readouterr().out
+    assert "Newegg Canada [3P]" in output
+    assert "Seller: Marketplace Shop (third party)" in output
 
 
 def test_report_detail_modes(capsys):

@@ -141,6 +141,11 @@ def money(value: Decimal) -> str:
     return f"${value.quantize(Decimal(1), rounding=ROUND_HALF_UP):,.0f}"
 
 
+def retailer_label(retailer: Retailer) -> str:
+    """Return a concise report label that makes marketplace listings visible."""
+    return f"{retailer.name} [3P]" if retailer.seller_type == "third_party" else retailer.name
+
+
 def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None) -> tuple[str, str, str, str]:
     current = item.current
     target_text = money(target) if target is not None else "—"
@@ -204,7 +209,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
     columns = (("Vendor", width - 55, "left"), ("Target", 7, "right"), ("Now", 7, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
     print("  ".join(paint(cell(name, width, align), "bold") for name, width, align in columns))
     for item in checked:
-        values = (item.retailer.name, *metrics(item, product.target_price, bounds))
+        values = (retailer_label(item.retailer), *metrics(item, product.target_price, bounds))
         print("  ".join(style_cell(cell(value, width, align), name) for (name, width, align), value in zip(columns, values)))
     if legend:
         range_legend(bounds)
@@ -225,7 +230,12 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
     for item in checked:
         current = item.current
         print()
-        print(paint(item.retailer.name, "bold"))
+        print(paint(retailer_label(item.retailer), "bold"))
+        if item.retailer.seller:
+            seller_type = item.retailer.seller_type.replace("_", " ") if item.retailer.seller_type else "unspecified"
+            print(f"  Seller: {item.retailer.seller} ({seller_type})")
+        elif item.retailer.seller_type:
+            print(f"  Seller type: {item.retailer.seller_type.replace('_', ' ')}")
         print(f"  Observations: {len(item.history)}")
         prices = [observation.price for observation in item.history if observation.price is not None]
         if prices:
@@ -252,7 +262,7 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
             rows.append((overview_order(product, None), values))
         for item in checked:
             price = item.current.price if item.current else None
-            values = (product.name, rating_text, item.retailer.name, *metrics(item, product.target_price, bounds))
+            values = (product.name, rating_text, retailer_label(item.retailer), *metrics(item, product.target_price, bounds))
             rows.append((overview_order(product, price), values))
     for _, values in sorted(rows, key=lambda row: row[0]):
         print("  ".join(style_cell(cell(value, width, align), title) for (title, width, align), value in zip(columns, values)))

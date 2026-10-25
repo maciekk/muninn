@@ -19,6 +19,8 @@ retailers:
     # price_selector: ".product-price" # Optional CSS selector override.
   - name: Newegg Canada
     url: https://www.newegg.ca/p/EXAMPLE
+    seller: Example Marketplace Seller # Optional: the actual seller, if different from the retailer.
+    seller_type: third_party # Optional: first_party or third_party; third-party listings show [3P].
     fetcher: interactive # Opens Chromium and waits for you to complete verification.
     refresh_after: 24h
   - name: Memory Express

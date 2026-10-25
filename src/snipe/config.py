@@ -57,6 +57,27 @@ def _price(value: object, label: str) -> Decimal | None:
     return result
 
 
+def track_range_bounds(path: Path) -> tuple[Decimal | None, Decimal | None]:
+    """Load optional visualization bounds from a track configuration file."""
+    try:
+        data = yaml.safe_load(path.read_text())
+    except FileNotFoundError:
+        raise ValueError(f"configuration not found: {path}")
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML in {path}: {exc}") from exc
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"track configuration must be a YAML mapping: {path}")
+    unknown = set(data) - {"range_min", "range_max"}
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(f"unknown track configuration field(s) in {path}: {names}")
+    return (_price(data.get("range_min"), "range_min"),
+            _price(data.get("range_max"), "range_max"))
+
+
+
 def load(path: Path) -> tuple[Product, ...]:
     try:
         data = yaml.safe_load(path.read_text())

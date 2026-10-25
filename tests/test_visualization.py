@@ -139,6 +139,29 @@ def test_help_subcommand_matches_help_option(capsys):
     assert subcommand_output == option_output
 
 
+def test_track_config_bounds_override_defaults_and_cli(monkeypatch, tmp_path):
+    import snipe.cli as cli
+    from unittest.mock import Mock
+
+    track = tmp_path / 'tracks' / 'nvme'
+    track.mkdir(parents=True)
+    (track / 'track.yaml').write_text('range_min: 400\nrange_max: 900\n')
+    (track / 'drive.yaml').write_text('name: Drive\nretailers: []\n')
+    report = Mock(return_value=0)
+    monkeypatch.setattr(cli, 'report', report)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(['--tracks-dir', str(tmp_path / 'tracks'), 'check', 'nvme'])
+    assert exit_info.value.code == 0
+    assert report.call_args.kwargs['track_bounds'] == {'nvme': (Decimal(400), Decimal(900))}
+
+    report.reset_mock()
+    with pytest.raises(SystemExit):
+        cli.main(['--tracks-dir', str(tmp_path / 'tracks'), 'check', 'nvme', '--range-max', '950'])
+    assert report.call_args.kwargs['track_bounds'] == {'nvme': (Decimal(400), Decimal(950))}
+
+
+
 def test_cli_range_options(monkeypatch, tmp_path):
     import snipe.cli as cli
     from unittest.mock import Mock

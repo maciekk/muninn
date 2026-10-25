@@ -13,7 +13,7 @@ import time
 import requests
 
 from . import browser
-from .config import Product, Retailer, load
+from .config import Product, Retailer, load, track_range_bounds
 from .extract import extract_price
 from .store import Observation, Store
 from .rate_limit import validate_delay, vendor_key, wait_for_vendor
@@ -283,22 +283,23 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
             price is None, price if price is not None else Decimal(0))
 
 
-def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> int:
+def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None) -> int:
     store = Store(directory)
     session = requests.Session()
     warnings: list[str] = []
     try:
         for track_name, products in tracks:
+            track_bound = (track_bounds or {}).get(track_name, bounds)
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
             clear_progress()
             print()
-            track_overview(track_name, results, bounds=bounds, legend=legend)
+            track_overview(track_name, results, bounds=track_bound, legend=legend)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append(format_warning("NO_VENDORS", product.name))
                 if long:
                     print()
-                    product_report(track_name, product, checked, long=True, bounds=bounds, legend=legend)
+                    product_report(track_name, product, checked, long=True, bounds=track_bound, legend=legend)
                 for item in checked:
                     if item.warning:
                         warnings.append(item.warning)
@@ -344,7 +345,8 @@ def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path
     for directory in directories:
         if not directory.is_dir():
             raise ValueError(f"track not found: {directory}")
-        files = sorted([*directory.glob("*.yaml"), *directory.glob("*.yml")])
+        files = sorted(path for path in [*directory.glob("*.yaml"), *directory.glob("*.yml")]
+                       if path.name not in {"track.yaml", "track.yml", "config.yaml", "config.yml"})
         if not files:
             raise ValueError(f"no product YAML files found in {directory}")
         tracks.append((directory.name, files))
@@ -355,12 +357,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="snipe", description="Cache-first product price monitor")
     parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
-    parser.add_argument("--range-min", default="500", metavar="CAD", help="visualization lower bound (default: 500)")
-    parser.add_argument("--range-max", default="1000", metavar="CAD", help="visualization upper bound (default: 1000)")
+    parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
+    parser.add_argument("--range-max", metavar="CAD", help="visualization upper bound (overrides track config)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
-    parser.add_argument("command_or_track", nargs="?", help="'check', 'reset', 'help', or the first track name")
+    parser.add_argument("command", nargs="?", help="'check', 'reset', or 'help'; may be omitted (infers 'check')")
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
@@ -369,7 +371,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_intermixed_args(argv)
     global _COLOR
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
-    command = args.command_or_track
+    command = args.command
     if command == "help":
         parser.print_help()
         raise SystemExit(0)
@@ -379,7 +381,14 @@ def main(argv: list[str] | None = None) -> None:
             raise ValueError("--vendor is only valid with the reset command")
         file_groups = track_files(args.tracks_dir, names)
         tracks: list[tuple[str, list[Product]]] = []
+        configured_bounds: dict[str, tuple[Decimal | None, Decimal | None]] = {}
         for track_name, files in file_groups:
+            track_directory = files[0].parent
+            config_files = [track_directory / name for name in ("track.yaml", "track.yml", "config.yaml", "config.yml") if (track_directory / name).is_file()]
+            if len(config_files) > 1:
+                raise ValueError(f"track {track_name} has multiple configuration files; use only track.yaml")
+            if config_files:
+                configured_bounds[track_name] = track_range_bounds(config_files[0])
             products: list[Product] = []
             for path in files:
                 configured = load(path)
@@ -394,12 +403,22 @@ def main(argv: list[str] | None = None) -> None:
             status = 0
         else:
             try:
-                bounds = (Decimal(args.range_min), Decimal(args.range_max))
+                cli_min = Decimal(args.range_min) if args.range_min is not None else None
+                cli_max = Decimal(args.range_max) if args.range_max is not None else None
             except InvalidOperation as exc:
                 raise ValueError("range bounds must be numbers") from exc
-            validate_bounds(bounds)
+            bounds = (cli_min if cli_min is not None else DEFAULT_BOUNDS[0],
+                      cli_max if cli_max is not None else DEFAULT_BOUNDS[1])
+            track_bounds: dict[str, tuple[Decimal, Decimal]] = {}
+            for track_name, _ in tracks:
+                configured_min, configured_max = configured_bounds.get(track_name, (None, None))
+                track_bound = (cli_min if cli_min is not None else (configured_min if configured_min is not None else DEFAULT_BOUNDS[0]),
+                               cli_max if cli_max is not None else (configured_max if configured_max is not None else DEFAULT_BOUNDS[1]))
+                validate_bounds(track_bound)
+                track_bounds[track_name] = track_bound
             validate_delay(args.vendor_delay)
-            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend)
+            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
+                            track_bounds=track_bounds or None)
     except ValueError as exc:
         parser.error(str(exc))
     raise SystemExit(status)

@@ -27,6 +27,7 @@ A **track** is a class of purchase (for example, NVMe drives or monitors). Each 
 ```text
 tracks/
   nvme/
+    track.yaml
     lexar-nm790-4tb.yaml
     wd-black-sn7100-4tb.yaml
   monitor/
@@ -166,10 +167,21 @@ Range graphic instead of numeric Low/High columns. Numeric extremes appear in
 - A flat history has no interval line; missing history shows `—`.
 
 Every row shares a fixed scale, defaulting to **$500–$1,000**, including in
-`--long` product tables. Override the bounds for the track being checked:
+`--long` product tables. Set persistent bounds for a track in
+`tracks/<track>/track.yaml` (the legacy-friendly name `config.yaml` is also
+accepted):
+
+```yaml
+# tracks/nvme/track.yaml
+range_min: 500
+range_max: 900
+```
+
+This file is separate from product YAML files, leaving room for future track-wide
+settings. A command-line bound overrides that one value for every selected track:
 
 ```sh
-snipe check nvme --range-min 500 --range-max 900
+snipe check nvme --range-max 950
 ```
 
 Bounds must be finite, non-negative numbers, with minimum strictly below maximum.

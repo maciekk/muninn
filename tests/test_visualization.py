@@ -32,11 +32,12 @@ def test_geometry_and_collisions():
     assert graphic([100, 200]).endswith('●')
 
 
-def test_rounding():
-    assert money(Decimal('709.99')) == '$710'
-    assert money(Decimal('100.50')) == '$101'
-    assert money(Decimal('100.49')) == '$100'
-    assert money(Decimal('1099.99')) == '$1,100'
+def test_money_preserves_nonzero_cents():
+    assert money(Decimal('710')) == '$710.00'
+    assert money(Decimal('709.99')) == '$709.99'
+    assert money(Decimal('100.50')) == '$100.50'
+    assert money(Decimal('100.49')) == '$100.49'
+    assert money(Decimal('1099.99')) == '$1,099.99'
 
 
 def test_price_drop_status_requires_meaningful_change():
@@ -50,7 +51,7 @@ def test_price_drop_status_requires_meaningful_change():
         return metrics(Checked(retailer, history, False, None), None)[-1]
 
     assert status('100', '90.01') == '—'
-    assert status('100', '90') == '↓ $10'
+    assert status('100', '90') == '↓ $10.00'
 
 
 def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
@@ -62,19 +63,21 @@ def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
     history = [Observation(datetime.now(timezone.utc), Decimal(p), True, None) for p in ('90', '110', '100.01')]
     item = Checked(retailer, history, False, None)
     # Rounding must not incorrectly make a target met.
-    assert metrics(item, product.target_price)[1] == '$100'
+    assert metrics(item, product.target_price)[1] == '$100.01'
     assert metrics(item, product.target_price)[-1] != 'TARGET MET!'
     missing = Checked(retailer, [], False, None)
     track_overview('nvme', [(product, [item, missing])])
     lines = capsys.readouterr().out.splitlines()
     table = [line for line in lines if line.startswith(('Product ', 'Drive '))]
+    assert '$100.01' not in '\n'.join(table)
     assert len(table) == 3
     assert all(len(line) == 120 for line in table)
     assert 'Low' not in table[0] and 'High' not in table[0]
     assert 'Range' in table[0]
     product_report('nvme', product, [item], long=True)
     output = capsys.readouterr().out
-    assert 'Low: $90; High: $110' in output
+    assert '$100.01' in output
+    assert 'Low: $90.00; High: $110.00' in output
 
 
 def test_shared_scale_places_equal_prices_in_same_column():
@@ -98,7 +101,7 @@ def test_overview_uses_configured_scale(capsys):
     results = [(product, [item]), (other, [other_item])]
     track_overview('nvme', results, bounds=(Decimal(500), Decimal(900)), legend=True)
     output = capsys.readouterr().out
-    assert 'Range scale: $500 to $900' in output
+    assert 'Range scale: $500.00 to $900.00' in output
     assert price_range([Decimal(700)], Decimal(550), (Decimal(500), Decimal(900))) in output
 
 

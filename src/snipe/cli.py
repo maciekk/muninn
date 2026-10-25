@@ -143,8 +143,12 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
     return Checked(retailer, history, due and warning is None, warning)
 
 
-def money(value: Decimal) -> str:
-    return f"${value.quantize(Decimal(1), rounding=ROUND_HALF_UP):,.0f}"
+def money(value: Decimal, cents: bool = True) -> str:
+    """Format a monetary value, optionally rounding it for compact tables."""
+    if not cents:
+        return f"${value.quantize(Decimal(1), rounding=ROUND_HALF_UP):,.0f}"
+    value = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"${value:,.2f}"
 
 
 def retailer_label(retailer: Retailer) -> str:
@@ -152,9 +156,9 @@ def retailer_label(retailer: Retailer) -> str:
     return f"{retailer.name} [3P]" if retailer.seller_type == "third_party" else retailer.name
 
 
-def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None) -> tuple[str, str, str, str]:
+def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None, cents: bool = True) -> tuple[str, str, str, str]:
     current = item.current
-    target_text = money(target) if target is not None else "—"
+    target_text = money(target, cents=cents) if target is not None else "—"
     if not current or current.price is None:
         return target_text, "—", price_range([], target), "NO PRICE"
     prices = [x.price for x in item.history if x.price is not None]
@@ -164,10 +168,10 @@ def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decima
     elif item.refreshed and (len(prices) == 1 or current.price < min(prices[:-1])):
         status = "NEW LOW!"
     elif len(prices) > 1 and prices[-2] - current.price >= CHANGE_ALERT_THRESHOLD:
-        status = f"↓ {money(prices[-2] - current.price)}"
+        status = f"↓ {money(prices[-2] - current.price, cents=cents)}"
     elif len(prices) > 1 and current.price > prices[-2]:
-        status = f"↑ {money(current.price - prices[-2])}"
-    return target_text, money(current.price), price_range(prices, target, bounds), status
+        status = f"↑ {money(current.price - prices[-2], cents=cents)}"
+    return target_text, money(current.price, cents=cents), price_range(prices, target, bounds), status
 
 
 def truncate(value: str, width: int) -> str:
@@ -212,7 +216,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         heading += f"  |  TARGET: {money(product.target_price)}"
     print(paint(heading, "cyan", "bold"))
     print()
-    columns = (("Vendor", width - 55, "left"), ("Target", 7, "right"), ("Now", 7, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
+    columns = (("Vendor", width - 61, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
     print("  ".join(paint(cell(name, width, align), "bold") for name, width, align in columns))
     for item in checked:
         values = (retailer_label(item.retailer), *metrics(item, product.target_price, bounds))
@@ -250,12 +254,12 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 
-def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
+def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False) -> None:
     width = report_width()
     print("═" * width)
     print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
     print()
-    columns = (("Product", width - 77, "left"), ("Rating", 6, "right"), ("Vendor", 16, "left"), ("Target", 7, "right"), ("Now", 7, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 12, "left"))
+    columns = (("Product", width - 83, "left"), ("Rating", 6, "right"), ("Vendor", 16, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 12, "left"))
     print("  ".join(paint(cell(title, width, align), "bold") for title, width, align in columns))
     rows = []
     for product, checked in results:
@@ -264,11 +268,11 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
         # No verified listing yet: retain the candidate visibly, without fetching
         # search pages or substituting a different capacity/model.
         if not checked:
-            values = (product.name, rating_text, "—", money(product.target_price) if product.target_price is not None else "—", "—", price_range([], product.target_price), "NO LINKS")
+            values = (product.name, rating_text, "—", money(product.target_price, cents=cents) if product.target_price is not None else "—", "—", price_range([], product.target_price), "NO LINKS")
             rows.append((overview_order(product, None), values))
         for item in checked:
             price = item.current.price if item.current else None
-            values = (product.name, rating_text, retailer_label(item.retailer), *metrics(item, product.target_price, bounds))
+            values = (product.name, rating_text, retailer_label(item.retailer), *metrics(item, product.target_price, bounds, cents=cents))
             rows.append((overview_order(product, price), values))
     for _, values in sorted(rows, key=lambda row: row[0]):
         print("  ".join(style_cell(cell(value, width, align), title) for (title, width, align), value in zip(columns, values)))
@@ -293,7 +297,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
             clear_progress()
             print()
-            track_overview(track_name, results, bounds=track_bound, legend=legend)
+            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append(format_warning("NO_VENDORS", product.name))

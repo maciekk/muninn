@@ -11,6 +11,10 @@ class FetchError(RuntimeError):
     """A page could not be obtained."""
 
 
+class VerificationRequired(FetchError):
+    """The retailer requires a user to complete a normal verification."""
+
+
 def check_page(html: str) -> None:
     """Reject known challenges rather than treating them as product pages."""
     soup = BeautifulSoup(html, "html.parser")
@@ -25,9 +29,9 @@ def check_page(html: str) -> None:
             "checking your browser",
         )
     ) or (soup.title and soup.title.get_text(strip=True).lower() == "just a moment..."):
-        raise FetchError("retailer returned a CAPTCHA/security challenge; unattended fetch stopped")
+        raise VerificationRequired("retailer returned a CAPTCHA/security challenge; unattended fetch stopped")
     if "click the button below to continue shopping" in text:
-        raise FetchError("retailer returned a Continue shopping interstitial")
+        raise VerificationRequired("retailer returned a Continue shopping interstitial")
 
 
 def fetch_html(url: str, state_dir: Path, interactive: bool = False) -> str:

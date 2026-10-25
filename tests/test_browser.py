@@ -77,7 +77,9 @@ def test_browser_config(tmp_path):
     assert load(path)[0].retailers[0].fetcher == 'browser'
     path.write_text(path.read_text().replace('fetcher: browser', 'fetcher: interactive'))
     assert load(path)[0].retailers[0].fetcher == 'interactive'
-    path.write_text(path.read_text().replace('fetcher: interactive', 'fetcher: invalid'))
+    path.write_text(path.read_text().replace('fetcher: interactive', 'fetcher: browser_interactive'))
+    assert load(path)[0].retailers[0].fetcher == 'browser_interactive'
+    path.write_text(path.read_text().replace('fetcher: browser_interactive', 'fetcher: invalid'))
     with pytest.raises(ValueError, match='fetcher'):
         load(path)
 
@@ -107,6 +109,23 @@ def test_browser_cache_and_failed_refresh(tmp_path, monkeypatch):
         again = refresh_if_needed(store, product, retailer, session, at + timedelta(hours=3, minutes=1))
         assert 'using stale data' in again.warning
         assert fetch.call_count == 2
+    finally:
+        store.close()
+
+
+def test_browser_interactive_retries_a_challenge_visibly(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    session = Mock()
+    retailer = Retailer('Memory Express', 'https://www.memoryexpress.com/Products/MX1', 7200, '.price', 'browser_interactive')
+    product = Product('Monitor', None, (retailer,))
+    fetch = Mock(side_effect=[browser.VerificationRequired('challenge'), '<span class="price">$999.99</span>'])
+    monkeypatch.setattr(browser, 'fetch_html', fetch)
+    try:
+        result = refresh_if_needed(store, product, retailer, session, datetime.now(timezone.utc))
+        assert result.current.price == Decimal('999.99')
+        assert fetch.call_args_list[0].kwargs['interactive'] is False
+        assert fetch.call_args_list[1].kwargs['interactive'] is True
+        session.get.assert_not_called()
     finally:
         store.close()
 

@@ -86,26 +86,27 @@ runs Chromium headlessly only for due refreshes, retains cookies in
 `.snipe/v1/browser-profile/`, and saves rendered HTML through the same cache as
 HTTP. Known challenges/timeouts become failed fetches with stale-price fallback.
 
-For occasional retailers such as Newegg that present a Cloudflare challenge, use
-`fetcher: interactive`. It opens the same persistent Chromium profile visibly and
-pauses in the terminal after navigation. Complete any normal retailer verification
-in that window, then press Enter for Snipe to read and cache the rendered price.
-It does not solve or bypass challenges. Give these links a longer refresh window,
-for example:
+For retailers such as Memory Express that only occasionally challenge a browser,
+use `fetcher: browser_interactive`. It first uses the persistent profile headlessly;
+only when the retailer requests verification does it reopen visibly and pause in
+the terminal. Complete the normal retailer verification, then press Enter for Snipe
+to read and cache the rendered price. It does not solve or bypass challenges.
+Give these links a longer refresh window, for example:
 
 ```yaml
-  - name: Newegg Canada
-    url: https://www.newegg.ca/p/EXAMPLE
-    fetcher: interactive
+  - name: Memory Express
+    url: https://www.memoryexpress.com/Products/MXEXAMPLE
+    fetcher: browser_interactive
     refresh_after: 24h
 ```
 
-Browser fetching is best-effort, not a guarantee against retailer blocking.
-Do not run simultaneous checks sharing the same browser profile. The profile
+Use `fetcher: interactive` when every browser fetch should be visible. Browser
+fetching is best-effort, not a guarantee against retailer blocking. Do not run
+simultaneous checks sharing the same browser profile. The profile
 contains cookies: keep `.snipe/` private and ignored by Git.
 
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
-Changing fetchers does not bypass the normal refresh delay. A failed interactive attempt instead uses its `retry_after` delay (one hour by default).
+Changing fetchers does not bypass the normal refresh delay. A failed interactive or browser-interactive attempt instead uses its `retry_after` delay (one hour by default).
 
 ### Manually refresh selected URLs
 

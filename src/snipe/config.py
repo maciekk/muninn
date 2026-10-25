@@ -90,8 +90,8 @@ def load(path: Path) -> tuple[Product, ...]:
             if selector is not None and not isinstance(selector, str):
                 raise ValueError("price_selector must be a string")
             fetcher = raw.get("fetcher", "http")
-            if fetcher not in ("http", "browser", "interactive"):
-                raise ValueError("fetcher must be http, browser, or interactive")
+            if fetcher not in ("http", "browser", "interactive", "browser_interactive"):
+                raise ValueError("fetcher must be http, browser, interactive, or browser_interactive")
             seller = raw.get("seller")
             if seller is not None and (not isinstance(seller, str) or not seller.strip()):
                 raise ValueError("seller must be a non-empty string")

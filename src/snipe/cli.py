@@ -98,12 +98,18 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
         current_time += timedelta(seconds=time.monotonic() - started_waiting)
         progress(f"Fetching {label}…")
         try:
-            if retailer.fetcher in {"browser", "interactive"}:
-                html = browser.fetch_html(
-                    retailer.url,
-                    store.root / "browser-profile",
-                    interactive=retailer.fetcher == "interactive",
-                )
+            if retailer.fetcher in {"browser", "interactive", "browser_interactive"}:
+                try:
+                    html = browser.fetch_html(
+                        retailer.url,
+                        store.root / "browser-profile",
+                        interactive=retailer.fetcher == "interactive",
+                    )
+                except browser.VerificationRequired:
+                    if retailer.fetcher != "browser_interactive":
+                        raise
+                    progress(f"Verification required for {label}; opening browser…")
+                    html = browser.fetch_html(retailer.url, store.root / "browser-profile", interactive=True)
             else:
                 response = session.get(retailer.url, timeout=30, headers={"User-Agent": USER_AGENT})
                 html = response.text

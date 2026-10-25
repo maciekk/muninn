@@ -323,6 +323,13 @@ def test_candidate_without_links(capsys):
     assert "$575" in output
 
 
+def test_range_overflow_markers_are_inverse(monkeypatch):
+    from muninn import cli
+
+    monkeypatch.setattr(cli, "_COLOR", True)
+    assert cli.style_cell("<───────────────>", "Range") == "\033[7m<\033[0m───────────────\033[7m>\033[0m"
+
+
 def test_short_overview_zebra_uses_configured_background(capsys, monkeypatch):
     from muninn import cli
     from muninn.config import Product

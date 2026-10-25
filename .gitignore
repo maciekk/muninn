@@ -4,4 +4,4 @@ __pycache__/
 .pytest_cache/
 .snipe/
 snipe.yaml
-hunts/
+tracks/

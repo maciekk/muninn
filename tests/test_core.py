@@ -118,18 +118,18 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     from snipe.cli import report
     from snipe.config import Product
 
-    hunts = [("nvme", [Product("Drive", None, (), ("Buying rationale",))])]
-    report(hunts, tmp_path)
+    tracks = [("nvme", [Product("Drive", None, (), ("Buying rationale",))])]
+    report(tracks, tmp_path)
     short = capsys.readouterr().out
-    assert "HUNT: NVME" in short
+    assert "TRACK: NVME" in short
     assert "NVME: DRIVE" not in short
     assert "Product Details" not in short
     assert "WARNINGS" in short
     assert "  - NO_VENDORS: Drive" in short
 
-    report(hunts, tmp_path, long=True)
+    report(tracks, tmp_path, long=True)
     detailed = capsys.readouterr().out
-    assert "HUNT: NVME" in detailed
+    assert "TRACK: NVME" in detailed
     assert "NVME: DRIVE" in detailed
     assert "Product Details" in detailed
     assert "Buying rationale" in detailed
@@ -149,7 +149,7 @@ def test_desirability_validation(tmp_path):
 
 
 def test_overview_rating_order(capsys):
-    from snipe.cli import Checked, hunt_overview
+    from snipe.cli import Checked, track_overview
     from snipe.config import Product, Retailer
     from snipe.store import Observation
 
@@ -159,7 +159,7 @@ def test_overview_rating_order(capsys):
         history = [Observation(datetime.now(timezone.utc), Decimal(price), True, None)] if price else []
         return product, [Checked(retailer, history, False, None)]
 
-    hunt_overview("nvme", [entry("Unrated", None, "1"), entry("Lower", "8", "10"),
+    track_overview("nvme", [entry("Unrated", None, "1"), entry("Lower", "8", "10"),
                            entry("Premium", "9.5", "600"), entry("BetterDeal", "9.5", "500"),
                            entry("MissingPrice", "9.5", None)])
     output = capsys.readouterr().out
@@ -168,7 +168,7 @@ def test_overview_rating_order(capsys):
 
 
 def test_overview_groups_retailers_by_product_name(capsys):
-    from snipe.cli import Checked, hunt_overview
+    from snipe.cli import Checked, track_overview
     from snipe.config import Product, Retailer
     from snipe.store import Observation
 
@@ -188,16 +188,16 @@ def test_overview_groups_retailers_by_product_name(capsys):
         (beta, [Checked(beta_retailer, [Observation(timestamp, Decimal("500"), True, None)], False, None)]),
     ]
 
-    hunt_overview("nvme", results)
+    track_overview("nvme", results)
     rows = [line for line in capsys.readouterr().out.splitlines() if "Shop" in line]
     assert ["Alpha" in row for row in rows] == [True, True, False]
 
 
 def test_candidate_without_links(capsys):
-    from snipe.cli import hunt_overview
+    from snipe.cli import track_overview
     from snipe.config import Product
 
-    hunt_overview("nvme", [(Product("Pending", Decimal(575), (), desirability=Decimal(9)), [])])
+    track_overview("nvme", [(Product("Pending", Decimal(575), (), desirability=Decimal(9)), [])])
     output = capsys.readouterr().out
     assert "Pending" in output
     assert "NO LINKS" in output

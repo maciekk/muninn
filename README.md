@@ -10,9 +10,9 @@ source .venv/bin/activate
 uv pip install -e '.[dev]'
 pytest -q
 
-mkdir -p hunts/monitor
-cp product.yaml.example hunts/monitor/my-monitor.yaml
-# edit hunts/monitor/my-monitor.yaml
+mkdir -p tracks/monitor
+cp product.yaml.example tracks/monitor/my-monitor.yaml
+# edit tracks/monitor/my-monitor.yaml
 snipe check monitor
 ```
 
@@ -20,12 +20,12 @@ snipe check monitor
 
 If refreshing fails, Snipe reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response. During interactive checks, progress uses one updating line on stderr (including cache hits, refreshes, and failures), while the final report remains on stdout. When stderr is redirected (for example, from cron), each progress event is written as a separate line for useful logs.
 
-## Hunt and product configuration
+## Track and product configuration
 
-A **hunt** is a class of purchase (for example, NVMe drives or monitors). Each hunt is a subdirectory of `./hunts/`, containing one YAML file for each viable product candidate; see `product.yaml.example`.
+A **track** is a class of purchase (for example, NVMe drives or monitors). Each track is a subdirectory of `./tracks/`, containing one YAML file for each viable product candidate; see `product.yaml.example`.
 
 ```text
-hunts/
+tracks/
   nvme/
     lexar-nm790-4tb.yaml
     wd-black-sn7100-4tb.yaml
@@ -34,18 +34,18 @@ hunts/
 ```
 
 ```sh
-snipe check nvme monitor  # named hunts
+snipe check nvme monitor  # named tracks
 snipe nvme monitor        # `check` is optional
-snipe                     # check every hunt directory
+snipe                     # check every track directory
 ```
 
-Use `--hunts-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Canada Computers, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price.
+Use `--tracks-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Canada Computers, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price.
 
 Durations accept positive `m`, `h`, or `d` values, such as `30m`, `2h`, or `1d`. `refresh_after` controls the interval after a successful fetch (default `2h`); `retry_after` controls the interval after a failed fetch (default `1h`). Either may be set at product level and overridden for an individual retailer. Target prices are met at or below the configured amount. Add optional `notes` as a string or list of strings for buying rationale, tradeoffs, or things to watch; these appear as wrapped bullets in the product details.
 
 ## Report indicators
 
-Each hunt begins with a cross-product retailer comparison sorted by desirability
+Each track begins with a cross-product retailer comparison sorted by desirability
 (highest first), then current price (lowest first) within each rating. Unrated
 products sort after rated ones; missing prices sort last within a rating. The
 `Rating` column is shown in the overview, including `--short` mode. In `--long` mode each product also has a retailer table, a Product Details section for its rating and notes, and separate vendor sections with observation count and numeric low/high. Cache timestamps are shown dimmed at the end of each vendor section.
@@ -56,7 +56,7 @@ products sort after rated ones; missing prices sort last within a rating. The
 
 Use normal scheduling (for example cron) to run `snipe`; the freshness window prevents unnecessary requests. Interactive reports use colour and bold emphasis by default; piped/cron output is plain. Override this with `--color always` or `--color never`.
 
-Reports default to `--short`: only the overall comparison table for each hunt,
+Reports default to `--short`: only the overall comparison table for each track,
 without any per-product subsections.
 Use `snipe check nvme --long` to include per-product tables, Details, and notes,
 or `--short` to explicitly
@@ -112,9 +112,9 @@ Changing fetchers does not bypass the normal refresh delay. A failed interactive
 Use `reset` to make configured URLs eligible for their next check immediately. It preserves observations and cached pages; it only moves the latest attempt timestamp into the past.
 
 ```sh
-snipe reset nvme                    # all configured retailers in the nvme hunt
-snipe reset nvme --vendor newegg.ca # just Newegg URLs in that hunt
-snipe reset --vendor newegg.ca      # Newegg URLs across every hunt
+snipe reset nvme                    # all configured retailers in the nvme track
+snipe reset nvme --vendor newegg.ca # just Newegg URLs in that track
+snipe reset --vendor newegg.ca      # Newegg URLs across every track
 snipe check nvme                    # performs the now-due fetches
 ```
 
@@ -126,7 +126,7 @@ the primary overview sort key; price breaks ties. Existing files without ratings
 remain valid.
 
 A candidate awaiting verified listings may use `retailers: []`. It appears as
-`NO LINKS` and emits a warning rather than preventing the rest of the hunt from
+`NO LINKS` and emits a warning rather than preventing the rest of the track from
 running. Add exact product URLs when found; do not use search-result URLs as
 price sources. Availability comments in notes are not live inventory checks.
 
@@ -140,7 +140,7 @@ snipe check nvme --vendor-delay 5
 ```
 
 The last start time is persisted in `.snipe/v1/history.sqlite3`, shared by all
-hunts and subsequent runs in that project. Vendor identity comes from the URL's
+tracks and subsequent runs in that project. Vendor identity comes from the URL's
 hostname, not its configurable display name; known retailer subdomains share a
 bucket. HTTP and browser fetches use the same limiter. Cache hits never wait or
 update the timestamp, and failed fetch attempts count. Time already spent fetching
@@ -165,7 +165,7 @@ Range graphic instead of numeric Low/High columns. Numeric extremes appear in
 - A flat history has no interval line; missing history shows `—`.
 
 Every row shares a fixed scale, defaulting to **$500–$1,000**, including in
-`--long` product tables. Override the bounds for the hunt being checked:
+`--long` product tables. Override the bounds for the track being checked:
 
 ```sh
 snipe check nvme --range-min 500 --range-max 900

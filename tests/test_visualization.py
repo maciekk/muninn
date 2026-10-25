@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from snipe.cli import Checked, hunt_overview, metrics, money, product_report
+from snipe.cli import Checked, track_overview, metrics, money, product_report
 from snipe.config import Product, Retailer
 from snipe.store import Observation
 from snipe.visualization import price_range, RANGE_WIDTH
@@ -51,7 +51,7 @@ def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
     assert metrics(item, product.target_price)[1] == '$100'
     assert metrics(item, product.target_price)[-1] != 'TARGET MET!'
     missing = Checked(retailer, [], False, None)
-    hunt_overview('nvme', [(product, [item, missing])])
+    track_overview('nvme', [(product, [item, missing])])
     lines = capsys.readouterr().out.splitlines()
     table = [line for line in lines if line.startswith(('Product ', 'Drive '))]
     assert len(table) == 3
@@ -82,7 +82,7 @@ def test_overview_uses_configured_scale(capsys):
     other = Product('Other', Decimal(550), (retailer,))
     other_item = Checked(retailer, [Observation(datetime.now(timezone.utc), Decimal(700), True, None)], False, None)
     results = [(product, [item]), (other, [other_item])]
-    hunt_overview('nvme', results, bounds=(Decimal(500), Decimal(900)), legend=True)
+    track_overview('nvme', results, bounds=(Decimal(500), Decimal(900)), legend=True)
     output = capsys.readouterr().out
     assert 'Range scale: $500 to $900' in output
     assert price_range([Decimal(700)], Decimal(550), (Decimal(500), Decimal(900))) in output
@@ -113,7 +113,7 @@ def test_invalid_bounds(low, high):
 def test_cli_range_options(monkeypatch, tmp_path):
     import snipe.cli as cli
     from unittest.mock import Mock
-    monkeypatch.setattr(cli, 'hunt_files', lambda *_: [])
+    monkeypatch.setattr(cli, 'track_files', lambda *_: [])
     report = Mock(return_value=0)
     monkeypatch.setattr(cli, 'report', report)
     with pytest.raises(SystemExit) as exit_info:

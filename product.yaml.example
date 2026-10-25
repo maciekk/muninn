@@ -1,4 +1,4 @@
-# Copy this to hunts/<hunt-name>/<short-product-name>.yaml.
+# Copy this to tracks/<track-name>/<short-product-name>.yaml.
 # Prices are displayed pre-tax, in the currency shown by the retailer (CAD expected).
 name: Samsung Odyssey G80SD
 desirability: 9.0    # Optional preference score, 0–10; higher sorts first.

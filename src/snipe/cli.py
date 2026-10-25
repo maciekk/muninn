@@ -191,10 +191,10 @@ def range_legend(bounds: tuple[Decimal, Decimal] | None) -> None:
     print(paint("< / >: observed price or target outside scale (edge markers take precedence)", "dim"))
 
 
-def product_report(hunt_name: str, product: Product, checked: list[Checked], long: bool = False, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
+def product_report(track_name: str, product: Product, checked: list[Checked], long: bool = False, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
     width = report_width()
     print("─" * width)
-    heading = f"{hunt_name.upper()}: {product.name.upper()}"
+    heading = f"{track_name.upper()}: {product.name.upper()}"
     if product.target_price is not None:
         heading += f"  |  TARGET: {money(product.target_price)}"
     print(paint(heading, "cyan", "bold"))
@@ -232,10 +232,10 @@ def product_report(hunt_name: str, product: Product, checked: list[Checked], lon
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 
-def hunt_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
+def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
     width = report_width()
     print("═" * width)
-    print(paint(f"HUNT: {name.upper()}", "cyan", "bold"))
+    print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
     print()
     columns = (("Product", width - 77, "left"), ("Rating", 6, "right"), ("Vendor", 16, "left"), ("Target", 7, "right"), ("Now", 7, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 12, "left"))
     print("  ".join(paint(cell(title, width, align), "bold") for title, width, align in columns))
@@ -265,22 +265,22 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
             price is None, price if price is not None else Decimal(0))
 
 
-def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> int:
+def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> int:
     store = Store(directory)
     session = requests.Session()
     warnings: list[str] = []
     try:
-        for hunt_name, products in hunts:
+        for track_name, products in tracks:
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
             clear_progress()
             print()
-            hunt_overview(hunt_name, results, bounds=bounds, legend=legend)
+            track_overview(track_name, results, bounds=bounds, legend=legend)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append(format_warning("NO_VENDORS", product.name))
                 if long:
                     print()
-                    product_report(hunt_name, product, checked, long=True, bounds=bounds, legend=legend)
+                    product_report(track_name, product, checked, long=True, bounds=bounds, legend=legend)
                 for item in checked:
                     if item.warning:
                         warnings.append(item.warning)
@@ -296,13 +296,13 @@ def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool =
     return 1 if warnings else 0
 
 
-def reset_refreshes(hunts: list[tuple[str, list[Product]]], directory: Path, vendor: str | None = None) -> tuple[int, int]:
+def reset_refreshes(tracks: list[tuple[str, list[Product]]], directory: Path, vendor: str | None = None) -> tuple[int, int]:
     """Mark configured URLs due now, optionally restricted to one URL host."""
     selected_vendor = vendor_key(f"https://{vendor}") if vendor else None
     marked = already_due = 0
     store = Store(directory)
     try:
-        for _, products in hunts:
+        for _, products in tracks:
             for product in products:
                 for retailer in product.retailers:
                     if selected_vendor and vendor_key(retailer.url) != selected_vendor:
@@ -316,58 +316,58 @@ def reset_refreshes(hunts: list[tuple[str, list[Product]]], directory: Path, ven
     return marked, already_due
 
 
-def hunt_files(hunts_dir: Path, names: list[str]) -> list[tuple[str, list[Path]]]:
-    if not hunts_dir.is_dir():
-        raise ValueError(f"hunts directory not found: {hunts_dir}")
-    directories = [hunts_dir / name for name in names] if names else sorted(path for path in hunts_dir.iterdir() if path.is_dir())
+def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path]]]:
+    if not tracks_dir.is_dir():
+        raise ValueError(f"tracks directory not found: {tracks_dir}")
+    directories = [tracks_dir / name for name in names] if names else sorted(path for path in tracks_dir.iterdir() if path.is_dir())
     if not directories:
-        raise ValueError(f"no hunt directories found in {hunts_dir}")
-    hunts = []
+        raise ValueError(f"no track directories found in {tracks_dir}")
+    tracks = []
     for directory in directories:
         if not directory.is_dir():
-            raise ValueError(f"hunt not found: {directory}")
+            raise ValueError(f"track not found: {directory}")
         files = sorted([*directory.glob("*.yaml"), *directory.glob("*.yml")])
         if not files:
             raise ValueError(f"no product YAML files found in {directory}")
-        hunts.append((directory.name, files))
-    return hunts
+        tracks.append((directory.name, files))
+    return tracks
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="snipe", description="Cache-first product price monitor")
-    parser.add_argument("--hunts-dir", type=Path, default=Path("hunts"), help="hunt directory (default: ./hunts)")
+    parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
     parser.add_argument("--range-min", default="500", metavar="CAD", help="visualization lower bound (default: 500)")
     parser.add_argument("--range-max", default="1000", metavar="CAD", help="visualization upper bound (default: 1000)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
-    parser.add_argument("command_or_hunt", nargs="?", help="'check', 'reset', or the first hunt name")
-    parser.add_argument("hunts", nargs="*", help="hunt names")
+    parser.add_argument("command_or_track", nargs="?", help="'check', 'reset', or the first track name")
+    parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument("--short", dest="long", action="store_false", help="hunt overview only (default)")
+    verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
     verbosity.add_argument("--long", dest="long", action="store_true", help="include per-product tables, Details, and notes")
     parser.set_defaults(long=False)
     args = parser.parse_intermixed_args(argv)
     global _COLOR
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
-    command = args.command_or_hunt
-    names = args.hunts if command in {None, "check", "reset"} else [command, *args.hunts]
+    command = args.command_or_track
+    names = args.tracks if command in {None, "check", "reset"} else [command, *args.tracks]
     try:
         if args.vendor and command != "reset":
             raise ValueError("--vendor is only valid with the reset command")
-        file_groups = hunt_files(args.hunts_dir, names)
-        hunts: list[tuple[str, list[Product]]] = []
-        for hunt_name, files in file_groups:
+        file_groups = track_files(args.tracks_dir, names)
+        tracks: list[tuple[str, list[Product]]] = []
+        for track_name, files in file_groups:
             products: list[Product] = []
             for path in files:
                 configured = load(path)
                 if len(configured) != 1:
                     raise ValueError(f"{path} must define exactly one product")
                 products.append(configured[0])
-            hunts.append((hunt_name, products))
+            tracks.append((track_name, products))
         if command == "reset":
-            marked, already_due = reset_refreshes(hunts, args.hunts_dir.resolve().parent, args.vendor)
+            marked, already_due = reset_refreshes(tracks, args.tracks_dir.resolve().parent, args.vendor)
             scope = f" for {args.vendor}" if args.vendor else ""
             print(f"Reset {marked} retailer refresh timestamp(s){scope}; {already_due} URL(s) had no attempt and were already due.")
             status = 0
@@ -378,7 +378,7 @@ def main(argv: list[str] | None = None) -> None:
                 raise ValueError("range bounds must be numbers") from exc
             validate_bounds(bounds)
             validate_delay(args.vendor_delay)
-            status = report(hunts, args.hunts_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend)
+            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend)
     except ValueError as exc:
         parser.error(str(exc))
     raise SystemExit(status)

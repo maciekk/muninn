@@ -337,7 +337,7 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
 def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None, long_file: Path | None = None) -> int:
     store = Store(directory)
     session = requests.Session()
-    warnings: list[tuple[str, str | None]] = []
+    warnings: dict[str, list[tuple[str, str | None]]] = {}
     collected = []
 
     def render(long: bool) -> None:
@@ -352,17 +352,15 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
                 for product, checked in results:
                     print()
                     product_report(track_name, product, checked, long=True, bounds=track_bound, legend=legend)
-        else:
-            render_overviews()
-        if warnings:
+        render_overviews()
+        for track_name, track_warnings in warnings.items():
             print()
-            print(paint("WARNINGS", "yellow", "bold"))
-            for warning, url in warnings:
+            heading = f"WARNINGS: {track_name.upper()}" if len(tracks) > 1 else "WARNINGS"
+            print(paint(heading, "yellow", "bold"))
+            for warning, url in track_warnings:
                 print(f"- {warning}")
                 if url:
                     print(paint(f"  {url}", "dim"))
-        if long:
-            render_overviews()
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)
@@ -370,11 +368,11 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             collected.append((track_name, results, track_bound))
             for product, checked in results:
                 if not product.retailers:
-                    warnings.append((format_warning("NO_VENDORS", product.name), None))
+                    warnings.setdefault(track_name, []).append((format_warning("NO_VENDORS", product.name), None))
                 for item in checked:
                     if item.warning:
                         url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:")) else None
-                        warnings.append((item.warning, url))
+                        warnings.setdefault(track_name, []).append((item.warning, url))
         clear_progress()
         render(long and long_file is None)
         if long_file is not None:

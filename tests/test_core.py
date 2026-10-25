@@ -454,17 +454,27 @@ def test_optional_flag_values_require_equals(tmp_path, monkeypatch):
             "48;2;224;224;224" if "--zebra" in arguments else None)
 
 
-def test_long_report_ends_with_all_track_overviews(tmp_path, capsys, monkeypatch):
+def test_report_ends_with_track_warnings_after_all_overviews(tmp_path, capsys, monkeypatch):
     from muninn import cli
     from muninn.config import Product
 
     monkeypatch.setattr(cli, "_COLOR", False)
     tracks = [("first", [Product("Alpha", None, ())]),
               ("second", [Product("Beta", None, ())])]
-    cli.report(tracks, tmp_path, long=True)
-    output = capsys.readouterr().out
-    assert output.count("TRACK: FIRST") == 1
-    assert output.count("TRACK: SECOND") == 1
-    assert output.rindex("Product Details") < output.index("WARNINGS")
-    assert output.index("WARNINGS") < output.index("TRACK: FIRST")
-    assert output.index("TRACK: FIRST") < output.index("TRACK: SECOND")
+    for long, long_file in ((False, None), (True, None), (True, tmp_path / "report.txt")):
+        assert cli.report(tracks, tmp_path, long=long, long_file=long_file) == 1
+        outputs = [capsys.readouterr().out]
+        if long_file:
+            outputs.append(long_file.read_text())
+        for output in outputs:
+            assert output.count("TRACK: FIRST") == 1
+            assert output.count("TRACK: SECOND") == 1
+            if "Product Details" in output:
+                assert output.rindex("Product Details") < output.index("TRACK: FIRST")
+            assert output.index("TRACK: FIRST") < output.index("TRACK: SECOND")
+            assert output.index("TRACK: SECOND") < output.index("WARNINGS: FIRST")
+            first, second = output.split("WARNINGS: FIRST")[1].split("WARNINGS: SECOND")
+            assert "- NO_VENDORS: Alpha" in first
+            assert "Beta" not in first
+            assert "- NO_VENDORS: Beta" in second
+            assert "Alpha" not in second

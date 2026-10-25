@@ -344,7 +344,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             clear_progress()
             print()
             track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
-                           zebra_background=None if long else zebra_background)
+                           zebra_background=zebra_background)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append((format_warning("NO_VENDORS", product.name), None))
@@ -416,7 +416,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
     parser.add_argument("--range-max", metavar="CAD", help="visualization upper bound (overrides track config)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
-    parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate short-report products (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
+    parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate products (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
     parser.add_argument("command", nargs="?", help="'check', 'reset', or 'help'; may be omitted (infers 'check')")

@@ -380,3 +380,23 @@ def test_zebra_alternates_products_not_retailer_rows(capsys, monkeypatch):
     rows = [line for line in capsys.readouterr().out.splitlines() if "Shop" in line]
     assert len(rows) == 6
     assert ["\033[48;2;224;224;224" in row for row in rows] == [False, False, True, True, True, False]
+
+
+def test_report_zebra_in_short_and_long_modes(tmp_path, capsys, monkeypatch):
+    from muninn import cli
+    from muninn.config import Product
+
+    products = [Product(name, None, ()) for name in ("Alpha", "Beta", "Gamma")]
+    for long in (False, True):
+        for color in (False, True):
+            monkeypatch.setattr(cli, "_COLOR", color)
+            cli.report([("nvme", products)], tmp_path, long=long,
+                       zebra_background="48;2;48;48;48")
+            output = capsys.readouterr().out
+            rows = [line for line in output.splitlines() if "NO LINKS" in line]
+            assert len(rows) == 3
+            assert ["\033[48;2;48;48;48" in row for row in rows] == [False, color, False]
+            assert ("Product Details" in output) == long
+            if not color:
+                assert "\033[" not in output
+

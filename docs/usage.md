@@ -51,14 +51,14 @@ Use `muninn check nvme --long` to include per-product tables, Details, and notes
 or `--short` to explicitly
 select the default. These flags are mutually exclusive; warnings are collected in a single section at the end in either mode.
 
-For a spreadsheet-like visual separation in the short report, use `--zebra`. It
+For a spreadsheet-like visual separation in track overviews, use `--zebra`. It
 shades every other product with `#E0E0E0`, a light grey suited to light backgrounds.
 All retailer rows for a product share the same background.
 Choose a specific background with `--zebra COLOR`, using an ANSI
 colour name (such as `blue` or `bright_black`), a palette index from `0` to
 `255`, or a true-colour value such as `#303030`. Zebra shading is opt-in and
-only appears when terminal colour is enabled; it is omitted from `--long`
-reports.
+only appears when terminal colour is enabled. It applies to track overviews in
+both `--short` and `--long` reports, not the per-product detail sections.
 
 ## Optional browser fetching
 

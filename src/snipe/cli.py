@@ -20,6 +20,8 @@ from .rate_limit import validate_delay, vendor_key, wait_for_vendor
 from .visualization import price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
 
 USER_AGENT = "snipe-price-monitor/0.1 (+local cache-first price checking)"
+# Suppress insignificant retailer-price fluctuations in change indicators.
+CHANGE_ALERT_THRESHOLD = Decimal("10")
 _COLOR = False
 _RESET = "\033[0m"
 _STYLES = {"bold": "1", "dim": "2", "red": "31", "green": "32", "yellow": "33", "blue": "34", "cyan": "36", "bright_green": "92"}
@@ -150,7 +152,7 @@ def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decima
         status = "TARGET MET!"
     elif item.refreshed and (len(prices) == 1 or current.price < min(prices[:-1])):
         status = "NEW LOW!"
-    elif len(prices) > 1 and current.price < prices[-2]:
+    elif len(prices) > 1 and prices[-2] - current.price >= CHANGE_ALERT_THRESHOLD:
         status = f"↓ {money(prices[-2] - current.price)}"
     elif len(prices) > 1 and current.price > prices[-2]:
         status = f"↑ {money(current.price - prices[-2])}"

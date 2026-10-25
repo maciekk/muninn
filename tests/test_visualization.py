@@ -39,6 +39,20 @@ def test_rounding():
     assert money(Decimal('1099.99')) == '$1,100'
 
 
+def test_price_drop_status_requires_meaningful_change():
+    retailer = Retailer('Vendor', 'https://example.com', 7200)
+
+    def status(previous, current):
+        history = [
+            Observation(datetime.now(timezone.utc), Decimal(previous), True, None),
+            Observation(datetime.now(timezone.utc), Decimal(current), True, None),
+        ]
+        return metrics(Checked(retailer, history, False, None), None)[-1]
+
+    assert status('100', '90.01') == '—'
+    assert status('100', '90') == '↓ $10'
+
+
 def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
     import snipe.cli as cli
     monkeypatch.setattr(cli, '_COLOR', False)

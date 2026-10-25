@@ -353,7 +353,7 @@ def test_cli_zebra_default_and_explicit_color(tmp_path, monkeypatch):
     for flags, expected in (
         ([], None),
         (["--zebra"], "48;2;224;224;224"),
-        (["--zebra", "#303030"], "48;2;48;48;48"),
+        (["--zebra=#303030"], "48;2;48;48;48"),
     ):
         with pytest.raises(SystemExit) as result:
             cli.main(["--tracks-dir", str(tmp_path / "tracks"), "check", "nvme", *flags])
@@ -400,3 +400,55 @@ def test_report_zebra_in_short_and_long_modes(tmp_path, capsys, monkeypatch):
             if not color:
                 assert "\033[" not in output
 
+
+def test_cli_long_file_keeps_stdout_short(tmp_path, capsys, monkeypatch):
+    import pytest
+    from muninn import cli
+
+    track = tmp_path / "tracks" / "nvme"
+    track.mkdir(parents=True)
+    (track / "drive.yaml").write_text("name: Drive\nretailers: []\nnotes: [Buying rationale]\n")
+    output = tmp_path / "full report.txt"
+    output.write_text("old contents")
+    monkeypatch.setattr(cli, "_COLOR", False)
+    with pytest.raises(SystemExit) as result:
+        cli.main(["--tracks-dir", str(tmp_path / "tracks"), "--color", "always",
+                  "check", "nvme", f"--long={output}"])
+    assert result.value.code == 1  # No vendors remains a warning.
+    short = capsys.readouterr().out
+    full = output.read_text()
+    assert "TRACK: NVME" in short
+    assert "Product Details" not in short
+    assert "Buying rationale" not in short
+    assert "TRACK: NVME" in full
+    assert "Product Details" in full
+    assert "Buying rationale" in full
+    assert "NO_VENDORS: Drive" in full
+    assert "old contents" not in full
+    assert "\033[" not in full
+    assert cli._COLOR is True
+
+
+def test_optional_flag_values_require_equals(tmp_path, monkeypatch):
+    import pytest
+    from unittest.mock import Mock
+    from muninn import cli
+
+    track = tmp_path / "tracks" / "nvme"
+    track.mkdir(parents=True)
+    (track / "drive.yaml").write_text("name: Drive\nretailers: []\n")
+    report = Mock(return_value=0)
+    monkeypatch.setattr(cli, "report", report)
+    monkeypatch.setattr(cli, "_COLOR", False)
+    for arguments in (["--long", "check", "nvme"],
+                      ["check", "--long", "nvme"],
+                      ["--zebra", "check", "nvme"],
+                      ["check", "--zebra", "nvme"]):
+        with pytest.raises(SystemExit) as result:
+            cli.main(["--tracks-dir", str(tmp_path / "tracks"), *arguments])
+        assert result.value.code == 0
+        assert report.call_args.args[0][0][0] == "nvme"
+        assert report.call_args.kwargs["long_file"] is None
+        assert report.call_args.kwargs["long"] == ("--long" in arguments)
+        assert report.call_args.kwargs["zebra_background"] == (
+            "48;2;224;224;224" if "--zebra" in arguments else None)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
@@ -333,30 +334,21 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
             price is None, price if price is not None else Decimal(0))
 
 
-def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None) -> int:
+def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None, long_file: Path | None = None) -> int:
     store = Store(directory)
     session = requests.Session()
     warnings: list[tuple[str, str | None]] = []
-    try:
-        for track_name, products in tracks:
-            track_bound = (track_bounds or {}).get(track_name, bounds)
-            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
-            clear_progress()
+    collected = []
+
+    def render(long: bool) -> None:
+        for track_name, results, track_bound in collected:
             print()
             track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
                            zebra_background=zebra_background)
             for product, checked in results:
-                if not product.retailers:
-                    warnings.append((format_warning("NO_VENDORS", product.name), None))
                 if long:
                     print()
                     product_report(track_name, product, checked, long=True, bounds=track_bound, legend=legend)
-                for item in checked:
-                    if item.warning:
-                        # Retailer-specific warnings are actionable: retain the
-                        # configured URL so terminal users can inspect the page.
-                        url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:")) else None
-                        warnings.append((item.warning, url))
         if warnings:
             print()
             print(paint("WARNINGS", "yellow", "bold"))
@@ -364,6 +356,29 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
                 print(f"- {warning}")
                 if url:
                     print(paint(f"  {url}", "dim"))
+    try:
+        for track_name, products in tracks:
+            track_bound = (track_bounds or {}).get(track_name, bounds)
+            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
+            collected.append((track_name, results, track_bound))
+            for product, checked in results:
+                if not product.retailers:
+                    warnings.append((format_warning("NO_VENDORS", product.name), None))
+                for item in checked:
+                    if item.warning:
+                        url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:")) else None
+                        warnings.append((item.warning, url))
+        clear_progress()
+        render(long and long_file is None)
+        if long_file is not None:
+            global _COLOR
+            color = _COLOR
+            try:
+                with long_file.open("w", encoding="utf-8") as output, redirect_stdout(output):
+                    _COLOR = False
+                    render(True)
+            finally:
+                _COLOR = color
     finally:
         clear_progress()
         session.close()
@@ -410,22 +425,32 @@ def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="muninn", description="Cache-first product price monitor")
+    parser = argparse.ArgumentParser(prog="muninn", allow_abbrev=False, description="Cache-first product price monitor")
     parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
     parser.add_argument("--range-max", metavar="CAD", help="visualization upper bound (overrides track config)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
-    parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate products (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
+    parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate products; use --zebra=COLOR (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
     parser.add_argument("command", nargs="?", help="'check', 'reset', or 'help'; may be omitted (infers 'check')")
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
-    verbosity.add_argument("--long", dest="long", action="store_true", help="include per-product tables, Details, notes, and vendor URLs")
+    verbosity.add_argument("--long", dest="long", nargs="?", const=True, type=lambda value: Path(value) if value else True, metavar="FILE", help="include product details; with --long=FILE, save full report there and print short tables")
     parser.set_defaults(long=False)
-    args = parser.parse_intermixed_args(argv)
+    # argparse normally consumes a following positional for nargs="?". Bind
+    # bare optional-value flags to their defaults so only --flag=value supplies
+    # a value, leaving commands and track names unambiguous.
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    bare_defaults = {"--long": "", "--zebra": "#E0E0E0"}
+    for index, argument in enumerate(arguments):
+        if argument == "--":
+            break
+        if argument in bare_defaults:
+            arguments[index] = f"{argument}={bare_defaults[argument]}"
+    args = parser.parse_intermixed_args(arguments)
     global _COLOR
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
     command = args.command
@@ -475,9 +500,9 @@ def main(argv: list[str] | None = None) -> None:
                 track_bounds[track_name] = track_bound
             validate_delay(args.vendor_delay)
             zebra_background = background_code(args.zebra) if args.zebra is not None else None
-            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
+            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long is True, long_file=args.long if isinstance(args.long, Path) else None, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
                             track_bounds=track_bounds or None, zebra_background=zebra_background)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         parser.error(str(exc))
     raise SystemExit(status)
 

@@ -54,7 +54,7 @@ select the default. These flags are mutually exclusive; warnings are collected i
 For a spreadsheet-like visual separation in track overviews, use `--zebra`. It
 shades every other product with `#E0E0E0`, a light grey suited to light backgrounds.
 All retailer rows for a product share the same background.
-Choose a specific background with `--zebra COLOR`, using an ANSI
+Choose a specific background with `--zebra=COLOR`, using an ANSI
 colour name (such as `blue` or `bright_black`), a palette index from `0` to
 `255`, or a true-colour value such as `#303030`. Zebra shading is opt-in and
 only appears when terminal colour is enabled. It applies to track overviews in
@@ -190,3 +190,12 @@ scale. Numeric prices remain unclamped; exact values are preserved in history.
 Marker positions use exact amounts, not rounded display prices. The graphic is an
 approximate positional aid, not a time-series chart; only the numeric comparison
 controls `TARGET MET!`.
+
+### Saving a full report
+
+Use `muninn check nvme --long=report.txt` to write the full report to a UTF-8
+text file while keeping the short overview tables (and warnings) on stdout.
+The file is overwritten and contains no terminal colour codes. Data is fetched
+only once for both outputs. Without a filename, `--long` still prints the full
+report to stdout. Optional flag values must use `=` (for example, `--long=report.txt` or
+`--zebra=blue`). Bare flags never consume the following command or track name.

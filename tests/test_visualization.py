@@ -213,3 +213,28 @@ def test_history_window_and_empty_report(capsys):
     assert len(output.split('History  ')[1].split('  latest')[0]) == 40
     product_report('nvme', product, [Checked(retailer, [], False, None)], long=True)
     assert 'History  —  no observations' in capsys.readouterr().out
+
+
+def test_long_report_sorts_vendors_by_current_price(capsys, monkeypatch):
+    import muninn.cli as cli
+    monkeypatch.setattr(cli, '_COLOR', False)
+    monkeypatch.setattr(cli, 'report_width', lambda: 120)
+    timestamp = datetime.now(timezone.utc)
+    checked = []
+    for name, prices in [('Missing', []), ('Expensive', ['1', '200']),
+                         ('Cheap', ['300', '50']), ('Equal', ['50']), ('Free', ['0'])]:
+        retailer = Retailer(name, f'https://example.com/{name}', 7200)
+        history = [Observation(timestamp, Decimal(price), True, None) for price in prices]
+        checked.append(Checked(retailer, history, False, None))
+    original = checked.copy()
+    product = Product('Drive', None, tuple(item.retailer for item in checked))
+
+    product_report('nvme', product, checked, long=True)
+
+    table, details = capsys.readouterr().out.split('Product Details')
+    expected = ['Free', 'Cheap', 'Equal', 'Expensive', 'Missing']
+    for section in (table, details):
+        names = [line.split()[0] for line in section.splitlines()
+                 if line and line.split()[0] in expected]
+        assert names == expected
+    assert checked == original

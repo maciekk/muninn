@@ -232,6 +232,9 @@ def range_legend(bounds: tuple[Decimal, Decimal] | None) -> None:
 
 
 def product_report(track_name: str, product: Product, checked: list[Checked], long: bool = False, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> None:
+    # Share the same price order between the table and vendor details; missing prices last.
+    checked = sorted(checked, key=lambda item: overview_order(
+        product, item.current.price if item.current else None))
     width = report_width()
     print("─" * width)
     heading = f"{track_name.upper()}: {product.name.upper()}"

@@ -265,7 +265,6 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         current = item.current
         print()
         print(paint(retailer_label(item.retailer), "bold"))
-        print(paint(f"  {item.retailer.url}", "dim"))
         if item.retailer.seller:
             seller_type = item.retailer.seller_type.replace("_", " ") if item.retailer.seller_type else "unspecified"
             print(f"  Seller: {item.retailer.seller} ({seller_type})")
@@ -276,6 +275,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         if prices:
             print(f"  Low: {money(min(prices))}; High: {money(max(prices))}")
         timestamp = current.fetched_at.astimezone().strftime("%Y-%m-%d %H:%M") if current else "never"
+        print(paint(f"  {item.retailer.url}", "dim"))
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 

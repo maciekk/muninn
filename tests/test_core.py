@@ -452,3 +452,19 @@ def test_optional_flag_values_require_equals(tmp_path, monkeypatch):
         assert report.call_args.kwargs["long"] == ("--long" in arguments)
         assert report.call_args.kwargs["zebra_background"] == (
             "48;2;224;224;224" if "--zebra" in arguments else None)
+
+
+def test_long_report_ends_with_all_track_overviews(tmp_path, capsys, monkeypatch):
+    from muninn import cli
+    from muninn.config import Product
+
+    monkeypatch.setattr(cli, "_COLOR", False)
+    tracks = [("first", [Product("Alpha", None, ())]),
+              ("second", [Product("Beta", None, ())])]
+    cli.report(tracks, tmp_path, long=True)
+    output = capsys.readouterr().out
+    assert output.count("TRACK: FIRST") == 1
+    assert output.count("TRACK: SECOND") == 1
+    assert output.rindex("Product Details") < output.index("WARNINGS")
+    assert output.index("WARNINGS") < output.index("TRACK: FIRST")
+    assert output.index("TRACK: FIRST") < output.index("TRACK: SECOND")

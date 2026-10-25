@@ -341,14 +341,19 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
     collected = []
 
     def render(long: bool) -> None:
-        for track_name, results, track_bound in collected:
-            print()
-            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
-                           zebra_background=zebra_background)
-            for product, checked in results:
-                if long:
+        def render_overviews() -> None:
+            for track_name, results, track_bound in collected:
+                print()
+                track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
+                               zebra_background=zebra_background)
+
+        if long:
+            for track_name, results, track_bound in collected:
+                for product, checked in results:
                     print()
                     product_report(track_name, product, checked, long=True, bounds=track_bound, legend=legend)
+        else:
+            render_overviews()
         if warnings:
             print()
             print(paint("WARNINGS", "yellow", "bold"))
@@ -356,6 +361,8 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
                 print(f"- {warning}")
                 if url:
                     print(paint(f"  {url}", "dim"))
+        if long:
+            render_overviews()
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)

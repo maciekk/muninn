@@ -164,7 +164,33 @@ def test_overview_rating_order(capsys):
                            entry("MissingPrice", "9.5", None)])
     output = capsys.readouterr().out
     assert "Rating" in output
-    assert output.index("BetterDeal") < output.index("Premium") < output.index("MissingPrice") < output.index("Lower") < output.index("Unrated")
+    assert output.index("BetterDeal") < output.index("MissingPrice") < output.index("Premium") < output.index("Lower") < output.index("Unrated")
+
+
+def test_overview_groups_retailers_by_product_name(capsys):
+    from snipe.cli import Checked, hunt_overview
+    from snipe.config import Product, Retailer
+    from snipe.store import Observation
+
+    timestamp = datetime.now(timezone.utc)
+    alpha_retailers = (
+        Retailer("Expensive Shop", "https://example.com/alpha-expensive", 7200),
+        Retailer("Cheap Shop", "https://example.com/alpha-cheap", 7200),
+    )
+    alpha = Product("Alpha", None, alpha_retailers, desirability=Decimal("9"))
+    beta_retailer = Retailer("Middle Shop", "https://example.com/beta", 7200)
+    beta = Product("Beta", None, (beta_retailer,), desirability=Decimal("9"))
+    results = [
+        (alpha, [
+            Checked(alpha_retailers[0], [Observation(timestamp, Decimal("900"), True, None)], False, None),
+            Checked(alpha_retailers[1], [Observation(timestamp, Decimal("100"), True, None)], False, None),
+        ]),
+        (beta, [Checked(beta_retailer, [Observation(timestamp, Decimal("500"), True, None)], False, None)]),
+    ]
+
+    hunt_overview("nvme", results)
+    rows = [line for line in capsys.readouterr().out.splitlines() if "Shop" in line]
+    assert ["Alpha" in row for row in rows] == [True, True, False]
 
 
 def test_candidate_without_links(capsys):

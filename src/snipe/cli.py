@@ -259,10 +259,10 @@ def hunt_overview(name: str, results: list[tuple[Product, list[Checked]]], bound
         range_legend(bounds)
 
 def overview_order(product: Product, price: Decimal | None) -> tuple:
-    """Rating descending, then price ascending; unrated/missing prices last."""
+    """Rating descending, then product name, then price; unrated/missing prices last."""
     rating = product.desirability
-    return (rating is None, -rating if rating is not None else Decimal(0),
-            price is None, price if price is not None else Decimal(0), product.name)
+    return (rating is None, -rating if rating is not None else Decimal(0), product.name,
+            price is None, price if price is not None else Decimal(0))
 
 
 def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False) -> int:

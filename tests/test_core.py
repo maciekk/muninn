@@ -52,17 +52,14 @@ def test_extract_lg_unformatted_json_ld_price():
     assert extract_price(html, "https://www.lg.com/ca_en/monitors/gaming/32gx870b-b/") == Decimal("1399.99")
 
 
-
 def test_extract_dell_canada_price():
     html = '<span class="ps-dell-price-amount">CAD $1,349.99</span>'
     assert extract_price(html, "https://www.dell.com/en-ca/shop/product") == Decimal("1349.99")
 
 
-
 def test_extract_memory_express_grand_total_price():
     html = '<div class="GrandTotal c-capr-pricing__grand-total"><div><small>Only</small>$1,099.99</div></div>'
     assert extract_price(html, "https://www.memoryexpress.com/Products/MX00128835") == Decimal("1099.99")
-
 
 
 def test_extract_best_buy_primary_price_before_recommendations():
@@ -71,7 +68,6 @@ def test_extract_best_buy_primary_price_before_recommendations():
         <meta itemprop="price" content="349.99">
     '''
     assert extract_price(html, "https://www.bestbuy.ca/en-ca/product/example") == Decimal("1199.99")
-
 
 
 def test_failed_attempt_uses_shorter_retry_window(tmp_path: Path):
@@ -211,7 +207,6 @@ def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, cap
     assert "NVME: DRIVE" in detailed
 
 
-
 def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
     from snipe import cli
     from snipe.config import Product, Retailer
@@ -233,7 +228,6 @@ def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
         cli.report([("nvme", [product])], tmp_path)
         output = capsys.readouterr().out
         assert f"- {warning}\n  https://example.test/drive" in output
-
 
 
 def test_desirability_validation(tmp_path):
@@ -303,3 +297,73 @@ def test_candidate_without_links(capsys):
     assert "Pending" in output
     assert "NO LINKS" in output
     assert "$575" in output
+
+
+def test_short_overview_zebra_uses_configured_background(capsys, monkeypatch):
+    from snipe import cli
+    from snipe.config import Product
+
+    monkeypatch.setattr(cli, "_COLOR", True)
+    products = [
+        (Product("First", None, (), desirability=Decimal(9)), []),
+        (Product("Second", None, (), desirability=Decimal(8)), []),
+    ]
+    cli.track_overview("nvme", products, zebra_background=cli.background_code("bright_black"))
+    output = capsys.readouterr().out
+    first, second = (line for line in output.splitlines() if "NO LINKS" in line)
+    assert "\033[100m" not in first
+    assert "\033[100mSecond" in second
+
+
+def test_zebra_background_color_formats():
+    import pytest
+    from snipe.cli import background_code
+
+    assert background_code("grey") == "100"
+    assert background_code("196") == "48;5;196"
+    assert background_code("#123abc") == "48;2;18;58;188"
+    with pytest.raises(ValueError, match="zebra colour"):
+        background_code("not-a-colour")
+
+
+def test_cli_zebra_default_and_explicit_color(tmp_path, monkeypatch):
+    import pytest
+    from unittest.mock import Mock
+    from snipe import cli
+
+    track = tmp_path / "tracks" / "nvme"
+    track.mkdir(parents=True)
+    (track / "drive.yaml").write_text("name: Drive\nretailers: []\n")
+    report = Mock(return_value=0)
+    monkeypatch.setattr(cli, "report", report)
+    monkeypatch.setattr(cli, "_COLOR", False)
+    for flags, expected in (
+        ([], None),
+        (["--zebra"], "48;2;224;224;224"),
+        (["--zebra", "#303030"], "48;2;48;48;48"),
+    ):
+        with pytest.raises(SystemExit) as result:
+            cli.main(["--tracks-dir", str(tmp_path / "tracks"), "check", "nvme", *flags])
+        assert result.value.code == 0
+        assert report.call_args.kwargs["zebra_background"] == expected
+
+
+def test_zebra_alternates_products_not_retailer_rows(capsys, monkeypatch):
+    from snipe import cli
+    from snipe.config import Product, Retailer
+    from snipe.store import Observation
+
+    monkeypatch.setattr(cli, "_COLOR", True)
+    results = []
+    for name, count in (("Alpha", 2), ("Beta", 3), ("Gamma", 1)):
+        retailers = tuple(Retailer(f"Shop {i}", f"https://example.test/{name}/{i}", 7200)
+                          for i in range(count))
+        product = Product(name, None, retailers)
+        checked = [cli.Checked(retailer, [Observation(datetime.now(timezone.utc), Decimal(100), True, None)], False, None)
+                   for retailer in retailers]
+        results.append((product, checked))
+
+    cli.track_overview("nvme", list(reversed(results)), zebra_background="48;2;224;224;224")
+    rows = [line for line in capsys.readouterr().out.splitlines() if "Shop" in line]
+    assert len(rows) == 6
+    assert ["\033[48;2;224;224;224" in row for row in rows] == [False, False, True, True, True, False]

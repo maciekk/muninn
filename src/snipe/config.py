@@ -77,7 +77,6 @@ def track_range_bounds(path: Path) -> tuple[Decimal | None, Decimal | None]:
             _price(data.get("range_max"), "range_max"))
 
 
-
 def load(path: Path) -> tuple[Product, ...]:
     try:
         data = yaml.safe_load(path.read_text())

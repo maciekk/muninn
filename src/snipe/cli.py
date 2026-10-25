@@ -25,12 +25,36 @@ CHANGE_ALERT_THRESHOLD = Decimal("10")
 _COLOR = False
 _RESET = "\033[0m"
 _STYLES = {"bold": "1", "dim": "2", "red": "31", "green": "32", "yellow": "33", "blue": "34", "cyan": "36", "bright_green": "92"}
+_BACKGROUND_COLORS = {
+    "black": "40", "red": "41", "green": "42", "yellow": "43", "blue": "44", "magenta": "45", "cyan": "46", "white": "47",
+    "bright_black": "100", "bright_red": "101", "bright_green": "102", "bright_yellow": "103", "bright_blue": "104", "bright_magenta": "105", "bright_cyan": "106", "bright_white": "107",
+}
 
 
-def paint(text: str, *styles: str) -> str:
-    if not _COLOR or not styles:
+def paint(text: str, *styles: str, background: str | None = None) -> str:
+    if not _COLOR or (not styles and background is None):
         return text
-    return f"\033[{';'.join(_STYLES[style] for style in styles)}m{text}{_RESET}"
+    codes = ([] if background is None else [background]) + [_STYLES[style] for style in styles]
+    return f"\033[{';'.join(codes)}m{text}{_RESET}"
+
+
+def background_code(value: str) -> str:
+    """Convert a named ANSI, palette, or true-colour background to an SGR code."""
+    color = value.lower()
+    if color in {"gray", "grey"}:
+        color = "bright_black"
+    if color in _BACKGROUND_COLORS:
+        return _BACKGROUND_COLORS[color]
+    if color.isdecimal() and 0 <= int(color) <= 255:
+        return f"48;5;{color}"
+    if len(color) == 7 and color.startswith("#"):
+        try:
+            red, green, blue = (int(color[index:index + 2], 16) for index in (1, 3, 5))
+        except ValueError:
+            pass
+        else:
+            return f"48;2;{red};{green};{blue}"
+    raise ValueError("zebra colour must be an ANSI colour name, a palette index (0-255), or #RRGGBB")
 
 
 @dataclass
@@ -185,20 +209,19 @@ def cell(value: str, width: int, align: str = "left") -> str:
     return value.rjust(width) if align == "right" else value.ljust(width)
 
 
-def style_cell(value: str, column: str) -> str:
+def style_cell(value: str, column: str, background: str | None = None) -> str:
+    styles: tuple[str, ...] = ()
     if "TARGET MET!" in value:
-        return paint(value, "bright_green", "bold")
-    if "NEW LOW!" in value:
-        return paint(value, "green", "bold")
-    if "↓" in value:
-        return paint(value, "green", "bold")
-    if "↑" in value:
-        return paint(value, "red", "bold")
-    if value.strip() in {"NO PRICE", "NO LINKS"}:
-        return paint(value, "yellow", "bold")
-    if column == "Now" and value.strip() != "—":
-        return paint(value, "blue", "bold")
-    return value
+        styles = ("bright_green", "bold")
+    elif "NEW LOW!" in value or "↓" in value:
+        styles = ("green", "bold")
+    elif "↑" in value:
+        styles = ("red", "bold")
+    elif value.strip() in {"NO PRICE", "NO LINKS"}:
+        styles = ("yellow", "bold")
+    elif column == "Now" and value.strip() != "—":
+        styles = ("blue", "bold")
+    return paint(value, *styles, background=background)
 
 
 def range_legend(bounds: tuple[Decimal, Decimal] | None) -> None:
@@ -256,7 +279,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 
-def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False, skip_no_price: bool = False) -> None:
+def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False, skip_no_price: bool = False, zebra_background: str | None = None) -> None:
     width = report_width()
     print("═" * width)
     print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
@@ -278,8 +301,16 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
             if skip_no_price and values[-1] == "NO PRICE":
                 continue
             rows.append((overview_order(product, price), values))
+    previous_product = None
+    product_number = -1
     for _, values in sorted(rows, key=lambda row: row[0]):
-        print("  ".join(style_cell(cell(value, width, align), title) for (title, width, align), value in zip(columns, values)))
+        if values[0] != previous_product:
+            product_number += 1
+            previous_product = values[0]
+        background = zebra_background if product_number % 2 else None
+        separator = paint("  ", background=background)
+        print(separator.join(style_cell(cell(value, width, align), title, background)
+                             for (title, width, align), value in zip(columns, values)))
 
     if legend:
         range_legend(bounds)
@@ -291,7 +322,7 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
             price is None, price if price is not None else Decimal(0))
 
 
-def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None) -> int:
+def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None) -> int:
     store = Store(directory)
     session = requests.Session()
     warnings: list[tuple[str, str | None]] = []
@@ -301,7 +332,8 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
             clear_progress()
             print()
-            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long)
+            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
+                           zebra_background=None if long else zebra_background)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append((format_warning("NO_VENDORS", product.name), None))
@@ -373,6 +405,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
     parser.add_argument("--range-max", metavar="CAD", help="visualization upper bound (overrides track config)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
+    parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate short-report products (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
     parser.add_argument("command", nargs="?", help="'check', 'reset', or 'help'; may be omitted (infers 'check')")
@@ -430,8 +463,9 @@ def main(argv: list[str] | None = None) -> None:
                 validate_bounds(track_bound)
                 track_bounds[track_name] = track_bound
             validate_delay(args.vendor_delay)
+            zebra_background = background_code(args.zebra) if args.zebra is not None else None
             status = report(tracks, args.tracks_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
-                            track_bounds=track_bounds or None)
+                            track_bounds=track_bounds or None, zebra_background=zebra_background)
     except ValueError as exc:
         parser.error(str(exc))
     raise SystemExit(status)

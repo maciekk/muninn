@@ -167,7 +167,6 @@ def test_track_config_bounds_override_defaults_and_cli(monkeypatch, tmp_path):
     assert report.call_args.kwargs['track_bounds'] == {'nvme': (Decimal(400), Decimal(950))}
 
 
-
 def test_cli_range_options(monkeypatch, tmp_path):
     import snipe.cli as cli
     from unittest.mock import Mock

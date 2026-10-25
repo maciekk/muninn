@@ -454,7 +454,7 @@ def test_optional_flag_values_require_equals(tmp_path, monkeypatch):
             "48;2;224;224;224" if "--zebra" in arguments else None)
 
 
-def test_report_ends_with_track_warnings_after_all_overviews(tmp_path, capsys, monkeypatch):
+def test_report_groups_each_track_warnings_with_its_sections(tmp_path, capsys, monkeypatch):
     from muninn import cli
     from muninn.config import Product
 
@@ -469,12 +469,15 @@ def test_report_ends_with_track_warnings_after_all_overviews(tmp_path, capsys, m
         for output in outputs:
             assert output.count("TRACK: FIRST") == 1
             assert output.count("TRACK: SECOND") == 1
+            first_overview = output.index("TRACK: FIRST")
+            first_warnings = output.index("WARNINGS: FIRST")
+            second_warnings = output.index("WARNINGS: SECOND")
+            assert first_overview < first_warnings < output.index("TRACK: SECOND")
+            assert first_warnings < second_warnings
             if "Product Details" in output:
-                assert output.rindex("Product Details") < output.index("TRACK: FIRST")
-            assert output.index("TRACK: FIRST") < output.index("TRACK: SECOND")
-            assert output.index("TRACK: SECOND") < output.index("WARNINGS: FIRST")
-            first, second = output.split("WARNINGS: FIRST")[1].split("WARNINGS: SECOND")
-            assert "- NO_VENDORS: Alpha" in first
-            assert "Beta" not in first
-            assert "- NO_VENDORS: Beta" in second
-            assert "Alpha" not in second
+                assert output.index("FIRST: ALPHA") < first_overview
+                assert first_warnings < output.index("SECOND: BETA")
+            first = output.split("WARNINGS: FIRST")[1].splitlines()
+            second = output.split("WARNINGS: SECOND")[1].splitlines()
+            assert first[1] == "- NO_VENDORS: Alpha"
+            assert second[1] == "- NO_VENDORS: Beta"

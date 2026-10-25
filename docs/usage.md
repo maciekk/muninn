@@ -49,7 +49,7 @@ Reports default to `--short`: only the overall comparison table for each track,
 without any per-product subsections.
 Use `muninn check nvme --long` to include per-product tables, Details, and notes,
 or `--short` to explicitly
-select the default. These flags are mutually exclusive; warnings are collected in a single section at the end in either mode.
+select the default. These flags are mutually exclusive; each track's warnings follow that track's report sections in either mode.
 
 For a spreadsheet-like visual separation in track overviews, use `--zebra`. It
 shades every other product with `#E0E0E0`, a light grey suited to light backgrounds.

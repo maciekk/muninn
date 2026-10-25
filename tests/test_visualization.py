@@ -77,7 +77,10 @@ def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
     product_report('nvme', product, [item], long=True)
     output = capsys.readouterr().out
     assert '$100.01' in output
-    assert 'Low: $90.00; High: $110.00' in output
+    assert 'History  ▁█▅  latest $100.01' in output
+    assert '$90.00–$110.00' in output
+    assert '3 obs' in output
+    assert 'Observations:' not in output and 'Low:' not in output
 
 
 def test_shared_scale_places_equal_prices_in_same_column():
@@ -185,3 +188,28 @@ def test_cli_range_options(monkeypatch, tmp_path):
         cli.main(['--range-min', 'nonsense'])
     assert exit_info.value.code == 2
     report.assert_not_called()
+
+
+@pytest.mark.parametrize("prices,expected", [
+    ([], "—"), ([100], "▄"), ([100, 100], "▄▄"),
+    ([0, 1, 2, 3, 4, 5, 6, 7], "▁▂▃▄▅▆▇█"),
+    ([200, 100, 200], "█▁█"),
+])
+def test_price_sparkline(prices, expected):
+    from muninn.visualization import price_sparkline
+    assert price_sparkline([Decimal(p) for p in prices]) == expected
+
+
+def test_history_window_and_empty_report(capsys):
+    retailer = Retailer('Vendor', 'https://example.com', 7200)
+    product = Product('Drive', None, (retailer,))
+    history = [Observation(datetime(2025, 6, 2, 12, tzinfo=timezone.utc), Decimal(p), True, None)
+               for p in range(45)]
+    product_report('nvme', product, [Checked(retailer, history, False, None)], long=True)
+    output = capsys.readouterr().out
+    assert 'last 40 of 45 obs' in output
+    assert '$5.00–$44.00' in output
+    assert 'latest $44.00' in output
+    assert len(output.split('History  ')[1].split('  latest')[0]) == 40
+    product_report('nvme', product, [Checked(retailer, [], False, None)], long=True)
+    assert 'History  —  no observations' in capsys.readouterr().out

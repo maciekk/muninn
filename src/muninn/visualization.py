@@ -47,3 +47,15 @@ def validate_bounds(bounds: tuple[Decimal, Decimal]) -> None:
     low, high = bounds
     if not low.is_finite() or not high.is_finite() or low < 0 or low >= high:
         raise ValueError("range bounds must be finite, non-negative, and range-min < range-max")
+
+
+def price_sparkline(prices: list[Decimal]) -> str:
+    """One bar per observation, on a local min/max scale (not a time axis)."""
+    if not prices:
+        return "—"
+    low, high = min(prices), max(prices)
+    if low == high:
+        return "▄" * len(prices)
+    bars = "▁▂▃▄▅▆▇█"
+    return "".join(bars[int(((price - low) / (high - low) * 7).to_integral_value(
+        rounding=ROUND_HALF_UP))] for price in prices)

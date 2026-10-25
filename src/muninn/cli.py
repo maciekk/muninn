@@ -17,7 +17,7 @@ from .config import Product, Retailer, load, track_range_bounds
 from .extract import extract_price
 from .store import Observation, Store
 from .rate_limit import validate_delay, vendor_key, wait_for_vendor
-from .visualization import price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
+from .visualization import price_sparkline, price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
 
 USER_AGENT = "muninn-price-monitor/0.1 (+local cache-first price checking)"
 # Suppress insignificant retailer-price fluctuations in change indicators.
@@ -270,10 +270,18 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
             print(f"  Seller: {item.retailer.seller} ({seller_type})")
         elif item.retailer.seller_type:
             print(f"  Seller type: {item.retailer.seller_type.replace('_', ' ')}")
-        print(f"  Observations: {len(item.history)}")
-        prices = [observation.price for observation in item.history if observation.price is not None]
+        history = [observation for observation in item.history if observation.price is not None]
+        # Keep one bar per observation rather than silently aggregating history.
+        shown = history[-40:]
+        prices = [observation.price for observation in shown]
         if prices:
-            print(f"  Low: {money(min(prices))}; High: {money(max(prices))}")
+            print(f"  History  {price_sparkline(prices)}  latest {money(prices[-1])}")
+            dates = [observation.fetched_at.astimezone().strftime("%Y-%m-%d") for observation in shown]
+            span = dates[0] if dates[0] == dates[-1] else f"{dates[0]} → {dates[-1]}"
+            count = f"{len(shown)} obs" if len(history) == len(shown) else f"last {len(shown)} of {len(history)} obs"
+            print(f"           {money(min(prices))}–{money(max(prices))} · {span} · {count}")
+        else:
+            print("  History  —  no observations")
         timestamp = current.fetched_at.astimezone().strftime("%Y-%m-%d %H:%M") if current else "never"
         print(paint(f"  {item.retailer.url}", "dim"))
         print(paint(f"  Cached at: {timestamp}", "dim"))

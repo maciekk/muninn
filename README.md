@@ -39,7 +39,7 @@ snipe nvme monitor        # `check` is optional
 snipe                     # check every track directory
 ```
 
-Use `--tracks-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Canada Computers, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price. For marketplace listings, add optional `seller` and `seller_type: third_party` (or `first_party`); third-party listings are marked `[3P]` in reports.
+Use `--tracks-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Best Buy Canada, Canada Computers, Dell Canada, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price. For marketplace listings, add optional `seller` and `seller_type: third_party` (or `first_party`); third-party listings are marked `[3P]` in reports.
 
 Durations accept positive `m`, `h`, or `d` values, such as `30m`, `2h`, or `1d`. `refresh_after` controls the interval after a successful fetch (default `2h`); `retry_after` controls the interval after a failed fetch (default `1h`). Either may be set at product level and overridden for an individual retailer. Target prices are met at or below the configured amount. Add optional `notes` as a string or list of strings for buying rationale, tradeoffs, or things to watch; these appear as wrapped bullets in the product details.
 

@@ -43,6 +43,37 @@ def test_extract_json_ld_and_selector():
     assert extract_price('<span class="cost">CAD $1,299.99</span>', "https://example.test", ".cost") == Decimal("1299.99")
 
 
+def test_extract_lg_unformatted_json_ld_price():
+    html = '''
+        <script type="application/ld+json">
+          {"@type":"Product","offers":{"priceCurrency":"CAD","price":"1399.99"}}
+        </script>
+    '''
+    assert extract_price(html, "https://www.lg.com/ca_en/monitors/gaming/32gx870b-b/") == Decimal("1399.99")
+
+
+
+def test_extract_dell_canada_price():
+    html = '<span class="ps-dell-price-amount">CAD $1,349.99</span>'
+    assert extract_price(html, "https://www.dell.com/en-ca/shop/product") == Decimal("1349.99")
+
+
+
+def test_extract_memory_express_grand_total_price():
+    html = '<div class="GrandTotal c-capr-pricing__grand-total"><div><small>Only</small>$1,099.99</div></div>'
+    assert extract_price(html, "https://www.memoryexpress.com/Products/MX00128835") == Decimal("1099.99")
+
+
+
+def test_extract_best_buy_primary_price_before_recommendations():
+    html = '''
+        <span data-automation="product-price">$1199.99 $1,199.99</span>
+        <meta itemprop="price" content="349.99">
+    '''
+    assert extract_price(html, "https://www.bestbuy.ca/en-ca/product/example") == Decimal("1199.99")
+
+
+
 def test_failed_attempt_uses_shorter_retry_window(tmp_path: Path):
     from unittest.mock import Mock
     import requests

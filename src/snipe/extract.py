@@ -7,12 +7,14 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
-_PRICE = re.compile(r"(?:CAD\s*)?\$?\s*([0-9]{1,3}(?:[,\s][0-9]{3})*(?:\.\d{2})?|[0-9]+(?:\.\d{2})?)", re.I)
+_PRICE = re.compile(r"(?:CAD\s*)?\$?\s*((?:[0-9]{1,3}(?:[,\s][0-9]{3})+|[0-9]+)(?:\.\d{2})?)", re.I)
 SELECTORS = {
     "amazon.": ["#corePrice_feature_div .a-offscreen", ".apexPriceToPay .a-offscreen", "#priceblock_ourprice", "#priceblock_dealprice"],
+    "bestbuy.ca": ["[data-automation='product-price']"],
     "canadacomputers.": [".h2-big", ".product-price", "[itemprop='price']"],
     "newegg.": [".price-current", ".price-current strong", "[itemprop='price']"],
-    "memoryexpress.": [".c-capr-pricing__now", ".product-price", "[itemprop='price']"],
+    "memoryexpress.": [".c-capr-pricing__now", ".c-capr-pricing__grand-total", ".product-price", "[itemprop='price']"],
+    "dell.com": [".ps-dell-price-amount", "[data-testid='sharedPSPDellPrice']"],
 }
 
 

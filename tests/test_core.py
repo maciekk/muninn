@@ -124,7 +124,8 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     assert "HUNT: NVME" in short
     assert "NVME: DRIVE" not in short
     assert "Product Details" not in short
-    assert "  - no vendors configured: Drive" in short
+    assert "WARNINGS" in short
+    assert "  - NO_VENDORS: Drive" in short
 
     report(hunts, tmp_path, long=True)
     detailed = capsys.readouterr().out

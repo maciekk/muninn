@@ -78,6 +78,11 @@ def report_width() -> int:
     return max(100, shutil.get_terminal_size(fallback=(100, 24)).columns)
 
 
+def format_warning(kind: str, detail: str) -> str:
+    """Format a warning with a machine-scannable category prefix."""
+    return f"{kind}: {detail}"
+
+
 def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
@@ -110,23 +115,23 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
             store.record_success(retailer.url, product.name, retailer.name, price, cache_path, current_time)
             progress(f"Updated {label}" + (f": ${price}" if price is not None else "; price not found"))
         except (requests.RequestException, browser.FetchError) as exc:
-            warning = f"unable to get price: {label}; fetch failed, using stale data ({exc})"
+            warning = format_warning("FETCH_FAILED", f"{label}; using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
             progress(f"Failed {label}; keeping stale data")
         except OSError as exc:
-            warning = f"unable to cache data: {label}; using stale data ({exc})"
+            warning = format_warning("CACHE_FAILED", f"{label}; using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
             progress(f"Failed {label}; keeping stale data")
     else:
         progress(f"Using cached data for {label}")
     history = store.successful(retailer.url)
     if not history and warning is None:
-        warning = f"no cached data: {label}"
+        warning = format_warning("NO_CACHE", label)
     latest = store.latest_attempt(retailer.url)
     if latest and not latest.success and warning is None:
-        warning = f"unable to get price: {label}; fetch failed, using stale data ({latest.error})"
+        warning = format_warning("FETCH_FAILED", f"{label}; using stale data ({latest.error})")
     if latest and latest.success and latest.price is None:
-        warning = f"unable to get price: {label}; not found in latest cached page, using prior price if available"
+        warning = format_warning("PRICE_NOT_FOUND", f"{label}; using prior price if available")
     return Checked(retailer, history, due and warning is None, warning)
 
 
@@ -272,7 +277,7 @@ def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool =
             hunt_overview(hunt_name, results, bounds=bounds, legend=legend)
             for product, checked in results:
                 if not product.retailers:
-                    warnings.append(f"no vendors configured: {product.name}")
+                    warnings.append(format_warning("NO_VENDORS", product.name))
                 if long:
                     print()
                     product_report(hunt_name, product, checked, long=True, bounds=bounds, legend=legend)
@@ -281,7 +286,7 @@ def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool =
                         warnings.append(item.warning)
         if warnings:
             print()
-            print(paint("WARNING", "yellow", "bold"))
+            print(paint("WARNINGS", "yellow", "bold"))
             for warning in warnings:
                 print(f"  - {warning}")
     finally:

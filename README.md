@@ -4,6 +4,13 @@ A cache-first CLI for watching product prices. Keep product lists, cached pages,
 
 ![Muninn monitor price comparison report](docs/images/muninn-monitor-report.png)
 
+<br>
+
+> [!TIP]
+> **See the full picture with `--long`**: run `muninn monitor --long` for per-product retailer tables, ratings, notes, and historical price lows/highs.
+
+![Muninn long report excerpt showing NVMe product details and retailer price history](docs/images/muninn-nvme-long-report.png)
+
 ## Quick start
 
 ```sh

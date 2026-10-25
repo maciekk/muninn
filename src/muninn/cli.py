@@ -110,6 +110,12 @@ def format_warning(kind: str, detail: str) -> str:
     return f"{kind}: {detail}"
 
 
+def format_retailer_warning(kind: str, product: Product, retailer: Retailer, problem: str = "") -> str:
+    """Put the vendor first so fetch problems can be recognized at a glance."""
+    detail = f"{retailer.name}: {product.name}"
+    return format_warning(kind, f"{detail}; {problem}" if problem else detail)
+
+
 def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
@@ -148,23 +154,23 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
             store.record_success(retailer.url, product.name, retailer.name, price, cache_path, current_time)
             progress(f"Updated {label}" + (f": ${price}" if price is not None else "; price not found"))
         except (requests.RequestException, browser.FetchError) as exc:
-            warning = format_warning("FETCH_FAILED", f"{label}; using stale data ({exc})")
+            warning = format_retailer_warning("FETCH_FAILED", product, retailer, f"using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
             progress(f"Failed {label}; keeping stale data")
         except OSError as exc:
-            warning = format_warning("CACHE_FAILED", f"{label}; using stale data ({exc})")
+            warning = format_retailer_warning("CACHE_FAILED", product, retailer, f"using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
             progress(f"Failed {label}; keeping stale data")
     else:
         progress(f"Using cached data for {label}")
     history = store.successful(retailer.url)
     if not history and warning is None:
-        warning = format_warning("NO_CACHE", label)
+        warning = format_retailer_warning("NO_CACHE", product, retailer)
     latest = store.latest_attempt(retailer.url)
     if latest and not latest.success and warning is None:
-        warning = format_warning("FETCH_FAILED", f"{label}; using stale data ({latest.error})")
+        warning = format_retailer_warning("FETCH_FAILED", product, retailer, f"using stale data ({latest.error})")
     if latest and latest.success and latest.price is None:
-        warning = format_warning("PRICE_NOT_FOUND", f"{label}; using prior price if available")
+        warning = format_retailer_warning("PRICE_NOT_FOUND", product, retailer, "using prior price if available")
     return Checked(retailer, history, due and warning is None, warning)
 
 

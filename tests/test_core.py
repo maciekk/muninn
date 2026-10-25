@@ -200,7 +200,7 @@ def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, cap
 
     retailer = Retailer("Shop", "https://example.test/drive", 7200)
     product = Product("Drive", None, (retailer,))
-    warning = "PRICE_NOT_FOUND: Drive / Shop; using prior price if available"
+    warning = "PRICE_NOT_FOUND: Shop: Drive; using prior price if available"
     monkeypatch.setattr(
         cli,
         "refresh_if_needed",
@@ -227,9 +227,9 @@ def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
     retailer = Retailer("Shop", "https://example.test/drive", 7200)
     product = Product("Drive", None, (retailer,))
     for warning in (
-        "FETCH_FAILED: Drive / Shop; using stale data (timed out)",
-        "NO_CACHE: Drive / Shop",
-        "PRICE_NOT_FOUND: Drive / Shop; using prior price if available",
+        "FETCH_FAILED: Shop: Drive; using stale data (timed out)",
+        "NO_CACHE: Shop: Drive",
+        "PRICE_NOT_FOUND: Shop: Drive; using prior price if available",
     ):
         monkeypatch.setattr(
             cli,
@@ -241,6 +241,17 @@ def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
         cli.report([("nvme", [product])], tmp_path)
         output = capsys.readouterr().out
         assert f"- {warning}\n  https://example.test/drive" in output
+
+
+def test_retailer_warning_lists_vendor_before_product():
+    from muninn.cli import format_retailer_warning
+    from muninn.config import Product, Retailer
+
+    retailer = Retailer("Amazon", "https://example.test/drive", 7200)
+    product = Product("Drive", None, (retailer,))
+    assert format_retailer_warning("FETCH_FAILED", product, retailer, "using stale data (timed out)") == (
+        "FETCH_FAILED: Amazon: Drive; using stale data (timed out)"
+    )
 
 
 def test_desirability_validation(tmp_path):

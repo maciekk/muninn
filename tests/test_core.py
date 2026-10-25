@@ -2,13 +2,13 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from snipe.config import load, parse_duration
-from snipe.extract import extract_price
-from snipe.store import Store
+from muninn.config import load, parse_duration
+from muninn.extract import extract_price
+from muninn.store import Store
 
 
 def test_duration_and_config(tmp_path: Path):
-    config = tmp_path / "snipe.yaml"
+    config = tmp_path / "muninn.yaml"
     config.write_text("""products:
   - name: Drive
     target_price: 100
@@ -28,6 +28,19 @@ def test_duration_and_config(tmp_path: Path):
     assert product.retailers[0].retry_seconds == 900
     assert product.retailers[0].seller == "Marketplace Shop"
     assert product.retailers[0].seller_type == "third_party"
+
+
+def test_store_migrates_legacy_cache(tmp_path: Path):
+    legacy_page = tmp_path / ".snipe" / "v1" / "pages" / "cached.html"
+    legacy_page.parent.mkdir(parents=True)
+    legacy_page.write_text("cached price")
+
+    store = Store(tmp_path)
+
+    assert store.root == tmp_path / ".muninn" / "v1"
+    assert (store.pages / "cached.html").read_text() == "cached price"
+    assert not (tmp_path / ".snipe" / "v1").exists()
+    store.close()
 
 
 def test_single_product_file(tmp_path: Path):
@@ -73,8 +86,8 @@ def test_extract_best_buy_primary_price_before_recommendations():
 def test_failed_attempt_uses_shorter_retry_window(tmp_path: Path):
     from unittest.mock import Mock
     import requests
-    from snipe.cli import refresh_if_needed
-    from snipe.config import Product, Retailer
+    from muninn.cli import refresh_if_needed
+    from muninn.config import Product, Retailer
 
     store = Store(tmp_path)
     session = Mock()
@@ -106,8 +119,8 @@ def test_store_retains_success_after_failure(tmp_path: Path):
 
 
 def test_reset_marks_matching_retailers_due(tmp_path: Path):
-    from snipe.cli import reset_refreshes
-    from snipe.config import Product, Retailer
+    from muninn.cli import reset_refreshes
+    from muninn.config import Product, Retailer
 
     newegg = Retailer("Newegg", "https://www.newegg.ca/p/example", 86400)
     amazon = Retailer("Amazon", "https://www.amazon.ca/dp/example", 86400)
@@ -129,8 +142,8 @@ def test_reset_marks_matching_retailers_due(tmp_path: Path):
 
 
 def test_marketplace_seller_is_flagged_in_reports(capsys):
-    from snipe.cli import Checked, product_report
-    from snipe.config import Product, Retailer
+    from muninn.cli import Checked, product_report
+    from muninn.config import Product, Retailer
 
     retailer = Retailer("Newegg Canada", "https://newegg.ca/p/example", 7200,
                         seller="Marketplace Shop", seller_type="third_party")
@@ -144,8 +157,8 @@ def test_marketplace_seller_is_flagged_in_reports(capsys):
 
 
 def test_report_detail_modes(capsys):
-    from snipe.cli import product_report
-    from snipe.config import Product
+    from muninn.cli import product_report
+    from muninn.config import Product
 
     product = Product("Drive", None, (), ("Buying rationale",))
     product_report("nvme", product, [])
@@ -161,8 +174,8 @@ def test_report_detail_modes(capsys):
 
 
 def test_short_report_only_shows_overview(tmp_path, capsys):
-    from snipe.cli import report
-    from snipe.config import Product
+    from muninn.cli import report
+    from muninn.config import Product
 
     tracks = [("nvme", [Product("Drive", None, (), ("Buying rationale",))])]
     report(tracks, tmp_path)
@@ -182,8 +195,8 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
 
 
 def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, capsys, monkeypatch):
-    from snipe import cli
-    from snipe.config import Product, Retailer
+    from muninn import cli
+    from muninn.config import Product, Retailer
 
     retailer = Retailer("Shop", "https://example.test/drive", 7200)
     product = Product("Drive", None, (retailer,))
@@ -208,8 +221,8 @@ def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, cap
 
 
 def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
-    from snipe import cli
-    from snipe.config import Product, Retailer
+    from muninn import cli
+    from muninn.config import Product, Retailer
 
     retailer = Retailer("Shop", "https://example.test/drive", 7200)
     product = Product("Drive", None, (retailer,))
@@ -244,9 +257,9 @@ def test_desirability_validation(tmp_path):
 
 
 def test_overview_rating_order(capsys):
-    from snipe.cli import Checked, track_overview
-    from snipe.config import Product, Retailer
-    from snipe.store import Observation
+    from muninn.cli import Checked, track_overview
+    from muninn.config import Product, Retailer
+    from muninn.store import Observation
 
     def entry(name, rating, price):
         retailer = Retailer("Shop", "https://example.com/" + name, 7200)
@@ -263,9 +276,9 @@ def test_overview_rating_order(capsys):
 
 
 def test_overview_groups_retailers_by_product_name(capsys):
-    from snipe.cli import Checked, track_overview
-    from snipe.config import Product, Retailer
-    from snipe.store import Observation
+    from muninn.cli import Checked, track_overview
+    from muninn.config import Product, Retailer
+    from muninn.store import Observation
 
     timestamp = datetime.now(timezone.utc)
     alpha_retailers = (
@@ -289,8 +302,8 @@ def test_overview_groups_retailers_by_product_name(capsys):
 
 
 def test_candidate_without_links(capsys):
-    from snipe.cli import track_overview
-    from snipe.config import Product
+    from muninn.cli import track_overview
+    from muninn.config import Product
 
     track_overview("nvme", [(Product("Pending", Decimal(575), (), desirability=Decimal(9)), [])])
     output = capsys.readouterr().out
@@ -300,8 +313,8 @@ def test_candidate_without_links(capsys):
 
 
 def test_short_overview_zebra_uses_configured_background(capsys, monkeypatch):
-    from snipe import cli
-    from snipe.config import Product
+    from muninn import cli
+    from muninn.config import Product
 
     monkeypatch.setattr(cli, "_COLOR", True)
     products = [
@@ -317,7 +330,7 @@ def test_short_overview_zebra_uses_configured_background(capsys, monkeypatch):
 
 def test_zebra_background_color_formats():
     import pytest
-    from snipe.cli import background_code
+    from muninn.cli import background_code
 
     assert background_code("grey") == "100"
     assert background_code("196") == "48;5;196"
@@ -329,7 +342,7 @@ def test_zebra_background_color_formats():
 def test_cli_zebra_default_and_explicit_color(tmp_path, monkeypatch):
     import pytest
     from unittest.mock import Mock
-    from snipe import cli
+    from muninn import cli
 
     track = tmp_path / "tracks" / "nvme"
     track.mkdir(parents=True)
@@ -349,9 +362,9 @@ def test_cli_zebra_default_and_explicit_color(tmp_path, monkeypatch):
 
 
 def test_zebra_alternates_products_not_retailer_rows(capsys, monkeypatch):
-    from snipe import cli
-    from snipe.config import Product, Retailer
-    from snipe.store import Observation
+    from muninn import cli
+    from muninn.config import Product, Retailer
+    from muninn.store import Observation
 
     monkeypatch.setattr(cli, "_COLOR", True)
     results = []

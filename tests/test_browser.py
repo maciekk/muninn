@@ -5,10 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from snipe import browser
-from snipe.cli import clear_progress, progress, refresh_if_needed
-from snipe.config import Product, Retailer, load
-from snipe.store import Store
+from muninn import browser
+from muninn.cli import clear_progress, progress, refresh_if_needed
+from muninn.config import Product, Retailer, load
+from muninn.store import Store
 
 
 def test_challenge_detection():
@@ -50,8 +50,8 @@ def test_interactive_progress_replaces_one_status_line(monkeypatch):
     progress('Updated Drive / Shop: $10.00')
     clear_progress()
     assert terminal.getvalue() == (
-        '\r\033[2K[snipe] Fetching Drive / Shop…'
-        '\r\033[2K[snipe] Updated Drive / Shop: $10.00'
+        '\r\033[2K[muninn] Fetching Drive / Shop…'
+        '\r\033[2K[muninn] Updated Drive / Shop: $10.00'
         '\r\033[2K'
     )
 

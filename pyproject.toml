@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "snipe-price-monitor"
+name = "muninn-price-monitor"
 version = "0.1.0"
 description = "Cache-first CLI price monitoring"
 requires-python = ">=3.10"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-snipe = "snipe.cli:main"
+muninn = "muninn.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

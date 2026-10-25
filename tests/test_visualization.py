@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from snipe.cli import Checked, track_overview, metrics, money, product_report
-from snipe.config import Product, Retailer
-from snipe.store import Observation
-from snipe.visualization import price_range, RANGE_WIDTH
+from muninn.cli import Checked, track_overview, metrics, money, product_report
+from muninn.config import Product, Retailer
+from muninn.store import Observation
+from muninn.visualization import price_range, RANGE_WIDTH
 
 
 def graphic(prices, target=None):
@@ -55,7 +55,7 @@ def test_price_drop_status_requires_meaningful_change():
 
 
 def test_report_alignment_details_and_exact_comparison(capsys, monkeypatch):
-    import snipe.cli as cli
+    import muninn.cli as cli
     monkeypatch.setattr(cli, '_COLOR', False)
     monkeypatch.setattr(cli, 'report_width', lambda: 120)
     retailer = Retailer('Vendor', 'https://example.com', 7200)
@@ -91,7 +91,7 @@ def test_shared_scale_places_equal_prices_in_same_column():
 
 
 def test_overview_uses_configured_scale(capsys, monkeypatch):
-    import snipe.cli as cli
+    import muninn.cli as cli
     monkeypatch.setattr(cli, '_COLOR', False)
 
     retailer = Retailer('Vendor', 'https://example.com', 7200)
@@ -125,13 +125,13 @@ def test_overflow(prices, target, left, right):
 
 @pytest.mark.parametrize('low,high', [('1000', '500'), ('500', '500'), ('-1', '1000'), ('NaN', '1000'), ('500', 'Infinity')])
 def test_invalid_bounds(low, high):
-    from snipe.visualization import validate_bounds
+    from muninn.visualization import validate_bounds
     with pytest.raises(ValueError, match='range'):
         validate_bounds((Decimal(low), Decimal(high)))
 
 
 def test_help_subcommand_matches_help_option(capsys):
-    import snipe.cli as cli
+    import muninn.cli as cli
 
     with pytest.raises(SystemExit) as exit_info:
         cli.main(['help'])
@@ -146,7 +146,7 @@ def test_help_subcommand_matches_help_option(capsys):
 
 
 def test_track_config_bounds_override_defaults_and_cli(monkeypatch, tmp_path):
-    import snipe.cli as cli
+    import muninn.cli as cli
     from unittest.mock import Mock
 
     track = tmp_path / 'tracks' / 'nvme'
@@ -168,7 +168,7 @@ def test_track_config_bounds_override_defaults_and_cli(monkeypatch, tmp_path):
 
 
 def test_cli_range_options(monkeypatch, tmp_path):
-    import snipe.cli as cli
+    import muninn.cli as cli
     from unittest.mock import Mock
     monkeypatch.setattr(cli, 'track_files', lambda *_: [])
     report = Mock(return_value=0)

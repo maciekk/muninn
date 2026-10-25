@@ -3,10 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from snipe import rate_limit
-from snipe.cli import refresh_if_needed
-from snipe.config import Product, Retailer
-from snipe.store import Store
+from muninn import rate_limit
+from muninn.cli import refresh_if_needed
+from muninn.config import Product, Retailer
+from muninn.store import Store
 
 
 @pytest.fixture

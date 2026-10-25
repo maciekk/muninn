@@ -1,0 +1,1 @@
+"""Muninn price monitor."""

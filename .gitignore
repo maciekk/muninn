@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+# Current Muninn data and legacy Snipe data are both local-only.
+.muninn/
 .snipe/
+muninn.yaml
 snipe.yaml
 tracks/

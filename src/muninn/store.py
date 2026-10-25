@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 
@@ -18,7 +19,11 @@ class Observation:
 
 class Store:
     def __init__(self, project_dir: Path):
-        self.root = project_dir / ".snipe" / "v1"
+        self.root = project_dir / ".muninn" / "v1"
+        legacy_root = project_dir / ".snipe" / "v1"
+        if not self.root.exists() and legacy_root.exists():
+            self.root.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(legacy_root), str(self.root))
         self.pages = self.root / "pages"
         self.pages.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.root / "history.sqlite3")

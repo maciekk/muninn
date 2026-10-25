@@ -1,4 +1,4 @@
-# snipe
+# Muninn
 
 A cache-first, local CLI for watching product prices. It is designed for occasional sale-season use: product configuration, fetched HTML, and SQLite price history all live in the current project directory.
 
@@ -8,17 +8,17 @@ A cache-first, local CLI for watching product prices. It is designed for occasio
 uv venv --python 3.14
 source .venv/bin/activate
 uv pip install -e '.[dev]'
-pytest -q
+uv run pytest -q
 
 mkdir -p tracks/monitor
 cp product.yaml.example tracks/monitor/my-monitor.yaml
 # edit tracks/monitor/my-monitor.yaml
-snipe check monitor
+muninn check monitor
 ```
 
-`check` fetches a URL only when its configured freshness window has expired (default: `2h` after a successful fetch, `1h` after a failed fetch). HTML is saved under `.snipe/v1/pages/`; all price observations and failed fetches are retained in `.snipe/v1/history.sqlite3`.
+`check` fetches a URL only when its configured freshness window has expired (default: `2h` after a successful fetch, `1h` after a failed fetch). HTML is saved under `.muninn/v1/pages/`; all price observations and failed fetches are retained in `.muninn/v1/history.sqlite3`. On its first run, Muninn moves an existing `.snipe/v1/` cache into this new location.
 
-If refreshing fails, Snipe reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response. During interactive checks, progress uses one updating line on stderr (including cache hits, refreshes, and failures), while the final report remains on stdout. When stderr is redirected (for example, from cron), each progress event is written as a separate line for useful logs.
+If refreshing fails, Muninn reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response. During interactive checks, progress uses one updating line on stderr (including cache hits, refreshes, and failures), while the final report remains on stdout. When stderr is redirected (for example, from cron), each progress event is written as a separate line for useful logs.
 
 ## Track and product configuration
 
@@ -35,9 +35,9 @@ tracks/
 ```
 
 ```sh
-snipe check nvme monitor  # named tracks
-snipe nvme monitor        # `check` is optional
-snipe                     # check every track directory
+muninn check nvme monitor  # named tracks
+muninn nvme monitor        # `check` is optional
+muninn                     # check every track directory
 ```
 
 Use `--tracks-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Best Buy Canada, Canada Computers, Dell Canada, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price. For marketplace listings, add optional `seller` and `seller_type: third_party` (or `first_party`); third-party listings are marked `[3P]` in reports.
@@ -55,11 +55,11 @@ products sort after rated ones; missing prices sort last within a rating. The
 - `NEW LOW!` — current price is the lowest successful observation stored for that URL.
 - `↓ $…` / `↑ $…` — change from the preceding successful observation.
 
-Use normal scheduling (for example cron) to run `snipe`; the freshness window prevents unnecessary requests. Interactive reports use colour and bold emphasis by default; piped/cron output is plain. Override this with `--color always` or `--color never`.
+Use normal scheduling (for example cron) to run `muninn`; the freshness window prevents unnecessary requests. Interactive reports use colour and bold emphasis by default; piped/cron output is plain. Override this with `--color always` or `--color never`.
 
 Reports default to `--short`: only the overall comparison table for each track,
 without any per-product subsections.
-Use `snipe check nvme --long` to include per-product tables, Details, and notes,
+Use `muninn check nvme --long` to include per-product tables, Details, and notes,
 or `--short` to explicitly
 select the default. These flags are mutually exclusive; warnings are collected in a single section at the end in either mode.
 
@@ -91,15 +91,15 @@ retailers:
     fetcher: browser
 ```
 
-`src/snipe/browser.py` isolates the Playwright implementation. `fetcher: browser`
+`src/muninn/browser.py` isolates the Playwright implementation. `fetcher: browser`
 runs Chromium headlessly only for due refreshes, retains cookies in
-`.snipe/v1/browser-profile/`, and saves rendered HTML through the same cache as
+`.muninn/v1/browser-profile/`, and saves rendered HTML through the same cache as
 HTTP. Known challenges/timeouts become failed fetches with stale-price fallback.
 
 For retailers such as Memory Express that only occasionally challenge a browser,
 use `fetcher: browser_interactive`. It first uses the persistent profile headlessly;
 only when the retailer requests verification does it reopen visibly and pause in
-the terminal. Complete the normal retailer verification, then press Enter for Snipe
+the terminal. Complete the normal retailer verification, then press Enter for Muninn
 to read and cache the rendered price. It does not solve or bypass challenges.
 Give these links a longer refresh window, for example:
 
@@ -113,7 +113,7 @@ Give these links a longer refresh window, for example:
 Use `fetcher: interactive` when every browser fetch should be visible. Browser
 fetching is best-effort, not a guarantee against retailer blocking. Do not run
 simultaneous checks sharing the same browser profile. The profile
-contains cookies: keep `.snipe/` private and ignored by Git.
+contains cookies: keep `.muninn/` private and ignored by Git.
 
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
 Changing fetchers does not bypass the normal refresh delay. A failed interactive or browser-interactive attempt instead uses its `retry_after` delay (one hour by default).
@@ -123,10 +123,10 @@ Changing fetchers does not bypass the normal refresh delay. A failed interactive
 Use `reset` to make configured URLs eligible for their next check immediately. It preserves observations and cached pages; it only moves the latest attempt timestamp into the past.
 
 ```sh
-snipe reset nvme                    # all configured retailers in the nvme track
-snipe reset nvme --vendor newegg.ca # just Newegg URLs in that track
-snipe reset --vendor newegg.ca      # Newegg URLs across every track
-snipe check nvme                    # performs the now-due fetches
+muninn reset nvme                    # all configured retailers in the nvme track
+muninn reset nvme --vendor newegg.ca # just Newegg URLs in that track
+muninn reset --vendor newegg.ca      # Newegg URLs across every track
+muninn check nvme                    # performs the now-due fetches
 ```
 
 ## Candidate desirability
@@ -147,10 +147,10 @@ price sources. Availability comments in notes are not live inventory checks.
 for the same vendor (default **2 seconds**; fractional values accepted).
 
 ```sh
-snipe check nvme --vendor-delay 5
+muninn check nvme --vendor-delay 5
 ```
 
-The last start time is persisted in `.snipe/v1/history.sqlite3`, shared by all
+The last start time is persisted in `.muninn/v1/history.sqlite3`, shared by all
 tracks and subsequent runs in that project. Vendor identity comes from the URL's
 hostname, not its configurable display name; known retailer subdomains share a
 bucket. HTTP and browser fetches use the same limiter. Cache hits never wait or
@@ -190,7 +190,7 @@ This file is separate from product YAML files, leaving room for future track-wid
 settings. A command-line bound overrides that one value for every selected track:
 
 ```sh
-snipe check nvme --range-max 950
+muninn check nvme --range-max 950
 ```
 
 Bounds must be finite, non-negative numbers, with minimum strictly below maximum.

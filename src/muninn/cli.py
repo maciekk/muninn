@@ -19,7 +19,7 @@ from .store import Observation, Store
 from .rate_limit import validate_delay, vendor_key, wait_for_vendor
 from .visualization import price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
 
-USER_AGENT = "snipe-price-monitor/0.1 (+local cache-first price checking)"
+USER_AGENT = "muninn-price-monitor/0.1 (+local cache-first price checking)"
 # Suppress insignificant retailer-price fluctuations in change indicators.
 CHANGE_ALERT_THRESHOLD = Decimal("10")
 _COLOR = False
@@ -82,12 +82,12 @@ def progress(message: str) -> None:
     if sys.stderr.isatty():
         # Clear the complete prior line: a shorter replacement must not leave a
         # suffix from the previous message visible.
-        sys.stderr.write(f"\r\033[2K[snipe] {message}")
+        sys.stderr.write(f"\r\033[2K[muninn] {message}")
         sys.stderr.flush()
         _progress_active = True
     else:
         # Preserve one event per line when stderr is redirected (e.g. cron).
-        print(f"[snipe] {message}", file=sys.stderr, flush=True)
+        print(f"[muninn] {message}", file=sys.stderr, flush=True)
 
 
 def clear_progress() -> None:
@@ -399,7 +399,7 @@ def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="snipe", description="Cache-first product price monitor")
+    parser = argparse.ArgumentParser(prog="muninn", description="Cache-first product price monitor")
     parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")

@@ -1,5 +1,5 @@
 Metadata-Version: 2.4
-Name: snipe-price-monitor
+Name: muninn-price-monitor
 Version: 0.1.0
 Summary: Cache-first CLI price monitoring
 Requires-Python: >=3.10

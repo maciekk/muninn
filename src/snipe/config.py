@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import yaml
 
 DEFAULT_REFRESH_SECONDS = 2 * 60 * 60
+DEFAULT_RETRY_SECONDS = 60 * 60
 _DURATION = re.compile(r"^(?P<value>[1-9]\d*)\s*(?P<unit>[mhd])$")
 
 
@@ -19,6 +20,7 @@ class Retailer:
     refresh_seconds: int
     price_selector: str | None = None
     fetcher: str = "http"
+    retry_seconds: int = DEFAULT_RETRY_SECONDS
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ def load(path: Path) -> tuple[Product, ...]:
         if not isinstance(raw_product, dict) or not isinstance(raw_product.get("name"), str):
             raise ValueError(f"products[{index}] needs a name")
         product_delay = parse_duration(raw_product.get("refresh_after", "2h"))
+        product_retry_delay = parse_duration(raw_product.get("retry_after", "1h"))
         raw_retailers = raw_product.get("retailers")
         if not isinstance(raw_retailers, list):
             raise ValueError(f"products[{index}].retailers must be a list (use [] for a candidate awaiting links)")
@@ -85,9 +88,14 @@ def load(path: Path) -> tuple[Product, ...]:
             if selector is not None and not isinstance(selector, str):
                 raise ValueError("price_selector must be a string")
             fetcher = raw.get("fetcher", "http")
-            if fetcher not in ("http", "browser"):
-                raise ValueError("fetcher must be http or browser")
-            retailers.append(Retailer(raw["name"], raw["url"], parse_duration(raw["refresh_after"]) if "refresh_after" in raw else product_delay, selector, fetcher))
+            if fetcher not in ("http", "browser", "interactive"):
+                raise ValueError("fetcher must be http, browser, or interactive")
+            retailers.append(Retailer(
+                raw["name"], raw["url"],
+                parse_duration(raw["refresh_after"]) if "refresh_after" in raw else product_delay,
+                selector, fetcher,
+                parse_duration(raw["retry_after"]) if "retry_after" in raw else product_retry_delay,
+            ))
         raw_notes = raw_product.get("notes", [])
         if isinstance(raw_notes, str):
             notes = (raw_notes,)

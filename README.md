@@ -16,9 +16,9 @@ cp product.yaml.example hunts/monitor/my-monitor.yaml
 snipe check monitor
 ```
 
-`check` fetches a URL only when its configured freshness window has expired (default: `2h`). HTML is saved under `.snipe/v1/pages/`; all price observations and failed fetches are retained in `.snipe/v1/history.sqlite3`.
+`check` fetches a URL only when its configured freshness window has expired (default: `2h` after a successful fetch, `1h` after a failed fetch). HTML is saved under `.snipe/v1/pages/`; all price observations and failed fetches are retained in `.snipe/v1/history.sqlite3`.
 
-If refreshing fails, Snipe reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response.
+If refreshing fails, Snipe reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response. During interactive checks, progress uses one updating line on stderr (including cache hits, refreshes, and failures), while the final report remains on stdout. When stderr is redirected (for example, from cron), each progress event is written as a separate line for useful logs.
 
 ## Hunt and product configuration
 
@@ -41,7 +41,7 @@ snipe                     # check every hunt directory
 
 Use `--hunts-dir path` to use a different directory. Each retailer entry needs a `name` and `url`. Built-in HTML extractors cover Amazon, Canada Computers, Newegg Canada, and Memory Express. `price_selector` is an optional CSS-selector override for a site whose markup changes. The selector's text must contain the displayed price.
 
-Durations accept positive `m`, `h`, or `d` values, such as `30m`, `2h`, or `1d`. Target prices are met at or below the configured amount. Add optional `notes` as a string or list of strings for buying rationale, tradeoffs, or things to watch; these appear as wrapped bullets in the product details.
+Durations accept positive `m`, `h`, or `d` values, such as `30m`, `2h`, or `1d`. `refresh_after` controls the interval after a successful fetch (default `2h`); `retry_after` controls the interval after a failed fetch (default `1h`). Either may be set at product level and overridden for an individual retailer. Target prices are met at or below the configured amount. Add optional `notes` as a string or list of strings for buying rationale, tradeoffs, or things to watch; these appear as wrapped bullets in the product details.
 
 ## Report indicators
 
@@ -81,17 +81,42 @@ retailers:
     fetcher: browser
 ```
 
-`src/snipe/browser.py` isolates the Playwright implementation. Chromium runs
-headlessly only for due refreshes, retains cookies in `.snipe/v1/browser-profile/`,
-and saves rendered HTML through the same cache as HTTP. It may click an ordinary
-“Continue shopping” button once, but never requests human intervention or solves
-CAPTCHAs. Known challenges/timeouts become failed fetches with stale-price fallback.
+`src/snipe/browser.py` isolates the Playwright implementation. `fetcher: browser`
+runs Chromium headlessly only for due refreshes, retains cookies in
+`.snipe/v1/browser-profile/`, and saves rendered HTML through the same cache as
+HTTP. Known challenges/timeouts become failed fetches with stale-price fallback.
+
+For occasional retailers such as Newegg that present a Cloudflare challenge, use
+`fetcher: interactive`. It opens the same persistent Chromium profile visibly and
+pauses in the terminal after navigation. Complete any normal retailer verification
+in that window, then press Enter for Snipe to read and cache the rendered price.
+It does not solve or bypass challenges. Give these links a longer refresh window,
+for example:
+
+```yaml
+  - name: Newegg Canada
+    url: https://www.newegg.ca/p/EXAMPLE
+    fetcher: interactive
+    refresh_after: 24h
+```
+
 Browser fetching is best-effort, not a guarantee against retailer blocking.
 Do not run simultaneous checks sharing the same browser profile. The profile
 contains cookies: keep `.snipe/` private and ignored by Git.
 
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
-Changing fetchers does not bypass the normal refresh delay.
+Changing fetchers does not bypass the normal refresh delay. A failed interactive attempt instead uses its `retry_after` delay (one hour by default).
+
+### Manually refresh selected URLs
+
+Use `reset` to make configured URLs eligible for their next check immediately. It preserves observations and cached pages; it only moves the latest attempt timestamp into the past.
+
+```sh
+snipe reset nvme                    # all configured retailers in the nvme hunt
+snipe reset nvme --vendor newegg.ca # just Newegg URLs in that hunt
+snipe reset --vendor newegg.ca      # Newegg URLs across every hunt
+snipe check nvme                    # performs the now-due fetches
+```
 
 ## Candidate desirability
 

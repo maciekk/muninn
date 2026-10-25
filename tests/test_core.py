@@ -17,11 +17,13 @@ def test_duration_and_config(tmp_path: Path):
       - name: Newegg
         url: https://www.newegg.ca/p/example
         refresh_after: 30m
+        retry_after: 15m
 """)
     product = load(config)[0]
     assert parse_duration("2h") == 7200
     assert product.target_price == Decimal("100")
     assert product.retailers[0].refresh_seconds == 1800
+    assert product.retailers[0].retry_seconds == 900
 
 
 def test_single_product_file(tmp_path: Path):
@@ -37,6 +39,29 @@ def test_extract_json_ld_and_selector():
     assert extract_price('<span class="cost">CAD $1,299.99</span>', "https://example.test", ".cost") == Decimal("1299.99")
 
 
+def test_failed_attempt_uses_shorter_retry_window(tmp_path: Path):
+    from unittest.mock import Mock
+    import requests
+    from snipe.cli import refresh_if_needed
+    from snipe.config import Product, Retailer
+
+    store = Store(tmp_path)
+    session = Mock()
+    session.get.side_effect = requests.Timeout("blocked")
+    retailer = Retailer("Shop", "https://example.test/a", 24 * 3600, retry_seconds=3600)
+    product = Product("Drive", None, (retailer,))
+    at = datetime.now(timezone.utc)
+    try:
+        store.record_failure(retailer.url, product.name, retailer.name, "blocked", at)
+        # A failure is not retried at the normal 24-hour interval.
+        refresh_if_needed(store, product, retailer, session, at + timedelta(minutes=59))
+        assert session.get.call_count == 0
+        refresh_if_needed(store, product, retailer, session, at + timedelta(hours=1, seconds=1))
+        assert session.get.call_count == 1
+    finally:
+        store.close()
+
+
 def test_store_retains_success_after_failure(tmp_path: Path):
     store = Store(tmp_path)
     at = datetime.now(timezone.utc)
@@ -47,6 +72,29 @@ def test_store_retains_success_after_failure(tmp_path: Path):
     assert [x.price for x in store.successful("https://example.test/a")] == [Decimal("99.99")]
     assert store.latest_attempt("https://example.test/a").success is False
     store.close()
+
+
+def test_reset_marks_matching_retailers_due(tmp_path: Path):
+    from snipe.cli import reset_refreshes
+    from snipe.config import Product, Retailer
+
+    newegg = Retailer("Newegg", "https://www.newegg.ca/p/example", 86400)
+    amazon = Retailer("Amazon", "https://www.amazon.ca/dp/example", 86400)
+    product = Product("Drive", None, (newegg, amazon))
+    store = Store(tmp_path)
+    at = datetime.now(timezone.utc)
+    for retailer in (newegg, amazon):
+        cache_path, _ = store.write_html(retailer.url, "page", at)
+        store.record_success(retailer.url, product.name, retailer.name, Decimal("100"), cache_path, at)
+    store.close()
+
+    assert reset_refreshes([("nvme", [product])], tmp_path, "newegg.ca") == (1, 0)
+    store = Store(tmp_path)
+    try:
+        assert store.latest_attempt(newegg.url).fetched_at.year == 1970
+        assert store.latest_attempt(amazon.url).fetched_at == at
+    finally:
+        store.close()
 
 
 def test_report_detail_modes(capsys):
@@ -76,6 +124,7 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     assert "HUNT: NVME" in short
     assert "NVME: DRIVE" not in short
     assert "Product Details" not in short
+    assert "  - no vendors configured: Drive" in short
 
     report(hunts, tmp_path, long=True)
     detailed = capsys.readouterr().out

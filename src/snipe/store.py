@@ -75,6 +75,20 @@ class Store:
     def record_failure(self, url: str, product: str, retailer: str, error: str, at: datetime) -> None:
         self._record(url, product, retailer, None, False, error, None, at)
 
+    def mark_due(self, url: str) -> bool:
+        """Make a URL's latest attempt immediately eligible for refresh.
+
+        History is retained; only the timestamp used for freshness is moved into
+        the past. URLs with no attempt are already due.
+        """
+        cursor = self.db.execute(
+            "UPDATE observations SET fetched_at=? WHERE id=("
+            "SELECT id FROM observations WHERE url=? ORDER BY id DESC LIMIT 1)",
+            (datetime(1970, 1, 1, tzinfo=timezone.utc).isoformat(), url),
+        )
+        self.db.commit()
+        return cursor.rowcount == 1
+
     def _record(self, url: str, product: str, retailer: str, price: Decimal | None, success: bool, error: str | None, cache_path: str | None, at: datetime) -> None:
         self.db.execute("INSERT INTO observations(url,product,retailer,fetched_at,price,success,error,cache_path) VALUES(?,?,?,?,?,?,?,?)",
             (url, product, retailer, at.astimezone(timezone.utc).isoformat(), str(price) if price is not None else None, int(success), error, cache_path))

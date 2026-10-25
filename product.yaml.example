@@ -6,16 +6,20 @@ target_price: 999.99 # Optional; target is met at or below this value.
 notes:               # Optional free-form buying notes, shown in the report.
   - "Excellent OLED panel; watch for burn-in warranty coverage."
   - "Preferred if it reaches the target price."
-refresh_after: 2h    # Optional; defaults to 2h.
+refresh_after: 2h    # Successful fetches: optional; defaults to 2h.
+retry_after: 1h      # Failed fetches: optional; defaults to 1h.
 retailers:
   - name: Amazon
     # fetcher: browser  # Optional; requires Playwright + Chromium (see README).
     url: https://www.amazon.ca/dp/EXAMPLE
   - name: Canada Computers
     url: https://www.canadacomputers.com/product_info.php?item_id=EXAMPLE
-    refresh_after: 1h # A retailer URL may override the product delay.
+    refresh_after: 1h # A retailer URL may override the successful-fetch delay.
+    # retry_after: 30m # A retailer URL may also override the failed-fetch delay.
     # price_selector: ".product-price" # Optional CSS selector override.
   - name: Newegg Canada
     url: https://www.newegg.ca/p/EXAMPLE
+    fetcher: interactive # Opens Chromium and waits for you to complete verification.
+    refresh_after: 24h
   - name: Memory Express
     url: https://www.memoryexpress.com/Products/MXEXAMPLE

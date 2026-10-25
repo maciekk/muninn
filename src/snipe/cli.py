@@ -16,7 +16,7 @@ from . import browser
 from .config import Product, Retailer, load
 from .extract import extract_price
 from .store import Observation, Store
-from .rate_limit import validate_delay, wait_for_vendor
+from .rate_limit import validate_delay, vendor_key, wait_for_vendor
 from .visualization import price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
 
 USER_AGENT = "snipe-price-monitor/0.1 (+local cache-first price checking)"
@@ -47,6 +47,32 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_progress_active = False
+
+
+def progress(message: str) -> None:
+    """Update the interactive fetch status without mixing it into report output."""
+    global _progress_active
+    if sys.stderr.isatty():
+        # Clear the complete prior line: a shorter replacement must not leave a
+        # suffix from the previous message visible.
+        sys.stderr.write(f"\r\033[2K[snipe] {message}")
+        sys.stderr.flush()
+        _progress_active = True
+    else:
+        # Preserve one event per line when stderr is redirected (e.g. cron).
+        print(f"[snipe] {message}", file=sys.stderr, flush=True)
+
+
+def clear_progress() -> None:
+    """Remove the interactive status line before writing normal output."""
+    global _progress_active
+    if _progress_active:
+        sys.stderr.write("\r\033[2K")
+        sys.stderr.flush()
+        _progress_active = False
+
+
 def report_width() -> int:
     # 100 remains a usable fallback for redirected output and narrow terminals.
     return max(100, shutil.get_terminal_size(fallback=(100, 24)).columns)
@@ -54,37 +80,53 @@ def report_width() -> int:
 
 def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0) -> Checked:
     attempt = store.latest_attempt(retailer.url)
-    due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= retailer.refresh_seconds
+    refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
+    due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
+    label = f"{product.name} / {retailer.name}"
     if due:
+        progress(f"Refreshing {label} via {retailer.fetcher}…")
         started_waiting = time.monotonic()
         wait_for_vendor(store.db, retailer.url, vendor_delay)
         current_time += timedelta(seconds=time.monotonic() - started_waiting)
+        progress(f"Fetching {label}…")
         try:
-            if retailer.fetcher == "browser":
-                html = browser.fetch_html(retailer.url, store.root / "browser-profile")
+            if retailer.fetcher in {"browser", "interactive"}:
+                html = browser.fetch_html(
+                    retailer.url,
+                    store.root / "browser-profile",
+                    interactive=retailer.fetcher == "interactive",
+                )
             else:
                 response = session.get(retailer.url, timeout=30, headers={"User-Agent": USER_AGENT})
-                response.raise_for_status()
                 html = response.text
+                # Inspect an error response before raising its HTTP status so known
+                # bot/security interstitials produce an actionable warning.
+                browser.check_page(html)
+                response.raise_for_status()
             browser.check_page(html)
             cache_path, cached_html = store.write_html(retailer.url, html, current_time)
             price = extract_price(cached_html, retailer.url, retailer.price_selector)
             store.record_success(retailer.url, product.name, retailer.name, price, cache_path, current_time)
+            progress(f"Updated {label}" + (f": ${price}" if price is not None else "; price not found"))
         except (requests.RequestException, browser.FetchError) as exc:
-            warning = f"unable to fetch latest data; using stale data ({exc})"
+            warning = f"unable to get price: {label}; fetch failed, using stale data ({exc})"
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
+            progress(f"Failed {label}; keeping stale data")
         except OSError as exc:
-            warning = f"unable to cache latest data; using stale data ({exc})"
+            warning = f"unable to cache data: {label}; using stale data ({exc})"
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
+            progress(f"Failed {label}; keeping stale data")
+    else:
+        progress(f"Using cached data for {label}")
     history = store.successful(retailer.url)
     if not history and warning is None:
-        warning = "no cached successful data available"
+        warning = f"no cached data: {label}"
     latest = store.latest_attempt(retailer.url)
     if latest and not latest.success and warning is None:
-        warning = f"unable to fetch latest data; using stale data ({latest.error})"
+        warning = f"unable to get price: {label}; fetch failed, using stale data ({latest.error})"
     if latest and latest.success and latest.price is None:
-        warning = "price not found in latest cached page; using prior price if available"
+        warning = f"unable to get price: {label}; not found in latest cached page, using prior price if available"
     return Checked(retailer, history, due and warning is None, warning)
 
 
@@ -225,26 +267,48 @@ def report(hunts: list[tuple[str, list[Product]]], directory: Path, long: bool =
     try:
         for hunt_name, products in hunts:
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
+            clear_progress()
             print()
             hunt_overview(hunt_name, results, bounds=bounds, legend=legend)
             for product, checked in results:
                 if not product.retailers:
-                    warnings.append(f"{product.name}: no retailer links configured")
+                    warnings.append(f"no vendors configured: {product.name}")
                 if long:
                     print()
                     product_report(hunt_name, product, checked, long=True, bounds=bounds, legend=legend)
                 for item in checked:
                     if item.warning:
-                        warnings.append(f"{product.name} / {item.retailer.name}: {item.warning}")
+                        warnings.append(item.warning)
         if warnings:
             print()
             print(paint("WARNING", "yellow", "bold"))
             for warning in warnings:
                 print(f"  - {warning}")
     finally:
+        clear_progress()
         session.close()
         store.close()
     return 1 if warnings else 0
+
+
+def reset_refreshes(hunts: list[tuple[str, list[Product]]], directory: Path, vendor: str | None = None) -> tuple[int, int]:
+    """Mark configured URLs due now, optionally restricted to one URL host."""
+    selected_vendor = vendor_key(f"https://{vendor}") if vendor else None
+    marked = already_due = 0
+    store = Store(directory)
+    try:
+        for _, products in hunts:
+            for product in products:
+                for retailer in product.retailers:
+                    if selected_vendor and vendor_key(retailer.url) != selected_vendor:
+                        continue
+                    if store.mark_due(retailer.url):
+                        marked += 1
+                    else:
+                        already_due += 1
+    finally:
+        store.close()
+    return marked, already_due
 
 
 def hunt_files(hunts_dir: Path, names: list[str]) -> list[tuple[str, list[Path]]]:
@@ -272,7 +336,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--range-max", default="1000", metavar="CAD", help="visualization upper bound (default: 1000)")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="terminal color mode (default: auto)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
-    parser.add_argument("command_or_hunt", nargs="?", help="'check', or the first hunt name")
+    parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
+    parser.add_argument("command_or_hunt", nargs="?", help="'check', 'reset', or the first hunt name")
     parser.add_argument("hunts", nargs="*", help="hunt names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="hunt overview only (default)")
@@ -281,14 +346,11 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_intermixed_args(argv)
     global _COLOR
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
-    names = args.hunts if args.command_or_hunt in {None, "check"} else [args.command_or_hunt, *args.hunts]
+    command = args.command_or_hunt
+    names = args.hunts if command in {None, "check", "reset"} else [command, *args.hunts]
     try:
-        try:
-            bounds = (Decimal(args.range_min), Decimal(args.range_max))
-        except InvalidOperation as exc:
-            raise ValueError("range bounds must be numbers") from exc
-        validate_bounds(bounds)
-        validate_delay(args.vendor_delay)
+        if args.vendor and command != "reset":
+            raise ValueError("--vendor is only valid with the reset command")
         file_groups = hunt_files(args.hunts_dir, names)
         hunts: list[tuple[str, list[Product]]] = []
         for hunt_name, files in file_groups:
@@ -299,7 +361,19 @@ def main(argv: list[str] | None = None) -> None:
                     raise ValueError(f"{path} must define exactly one product")
                 products.append(configured[0])
             hunts.append((hunt_name, products))
-        status = report(hunts, args.hunts_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend)
+        if command == "reset":
+            marked, already_due = reset_refreshes(hunts, args.hunts_dir.resolve().parent, args.vendor)
+            scope = f" for {args.vendor}" if args.vendor else ""
+            print(f"Reset {marked} retailer refresh timestamp(s){scope}; {already_due} URL(s) had no attempt and were already due.")
+            status = 0
+        else:
+            try:
+                bounds = (Decimal(args.range_min), Decimal(args.range_max))
+            except InvalidOperation as exc:
+                raise ValueError("range bounds must be numbers") from exc
+            validate_bounds(bounds)
+            validate_delay(args.vendor_delay)
+            status = report(hunts, args.hunts_dir.resolve().parent, long=args.long, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend)
     except ValueError as exc:
         parser.error(str(exc))
     raise SystemExit(status)

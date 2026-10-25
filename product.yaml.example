@@ -1,0 +1,21 @@
+# Copy this to hunts/<hunt-name>/<short-product-name>.yaml.
+# Prices are displayed pre-tax, in the currency shown by the retailer (CAD expected).
+name: Samsung Odyssey G80SD
+desirability: 9.0    # Optional preference score, 0–10; higher sorts first.
+target_price: 999.99 # Optional; target is met at or below this value.
+notes:               # Optional free-form buying notes, shown in the report.
+  - "Excellent OLED panel; watch for burn-in warranty coverage."
+  - "Preferred if it reaches the target price."
+refresh_after: 2h    # Optional; defaults to 2h.
+retailers:
+  - name: Amazon
+    # fetcher: browser  # Optional; requires Playwright + Chromium (see README).
+    url: https://www.amazon.ca/dp/EXAMPLE
+  - name: Canada Computers
+    url: https://www.canadacomputers.com/product_info.php?item_id=EXAMPLE
+    refresh_after: 1h # A retailer URL may override the product delay.
+    # price_selector: ".product-price" # Optional CSS selector override.
+  - name: Newegg Canada
+    url: https://www.newegg.ca/p/EXAMPLE
+  - name: Memory Express
+    url: https://www.memoryexpress.com/Products/MXEXAMPLE

@@ -1,0 +1,128 @@
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from pathlib import Path
+
+from snipe.config import load, parse_duration
+from snipe.extract import extract_price
+from snipe.store import Store
+
+
+def test_duration_and_config(tmp_path: Path):
+    config = tmp_path / "snipe.yaml"
+    config.write_text("""products:
+  - name: Drive
+    target_price: 100
+    refresh_after: 2h
+    retailers:
+      - name: Newegg
+        url: https://www.newegg.ca/p/example
+        refresh_after: 30m
+""")
+    product = load(config)[0]
+    assert parse_duration("2h") == 7200
+    assert product.target_price == Decimal("100")
+    assert product.retailers[0].refresh_seconds == 1800
+
+
+def test_single_product_file(tmp_path: Path):
+    config = tmp_path / "drive.yaml"
+    config.write_text("""name: Drive\nnotes:\n  - Fast and efficient\nretailers:\n  - name: Shop\n    url: https://shop.example/drive\n""")
+    product = load(config)[0]
+    assert product.name == "Drive"
+    assert product.notes == ("Fast and efficient",)
+
+
+def test_extract_json_ld_and_selector():
+    assert extract_price('<script type="application/ld+json">{"offers":{"price":"123.45"}}</script>', "https://example.test") == Decimal("123.45")
+    assert extract_price('<span class="cost">CAD $1,299.99</span>', "https://example.test", ".cost") == Decimal("1299.99")
+
+
+def test_store_retains_success_after_failure(tmp_path: Path):
+    store = Store(tmp_path)
+    at = datetime.now(timezone.utc)
+    cache_path, _ = store.write_html("https://example.test/a", "price page", at)
+    store.record_success("https://example.test/a", "Product", "Shop", Decimal("99.99"), cache_path, at)
+    store.record_failure("https://example.test/a", "Product", "Shop", "timeout", at + timedelta(hours=2))
+    assert store.cache_html("https://example.test/a") == "price page"
+    assert [x.price for x in store.successful("https://example.test/a")] == [Decimal("99.99")]
+    assert store.latest_attempt("https://example.test/a").success is False
+    store.close()
+
+
+def test_report_detail_modes(capsys):
+    from snipe.cli import product_report
+    from snipe.config import Product
+
+    product = Product("Drive", None, (), ("Buying rationale",))
+    product_report("nvme", product, [])
+    short = capsys.readouterr().out
+    assert "Vendor" in short
+    assert "Product Details" not in short
+    assert "Buying rationale" not in short
+
+    product_report("nvme", product, [], long=True)
+    detailed = capsys.readouterr().out
+    assert "Product Details" in detailed
+    assert "Buying rationale" in detailed
+
+
+def test_short_report_only_shows_overview(tmp_path, capsys):
+    from snipe.cli import report
+    from snipe.config import Product
+
+    hunts = [("nvme", [Product("Drive", None, (), ("Buying rationale",))])]
+    report(hunts, tmp_path)
+    short = capsys.readouterr().out
+    assert "HUNT: NVME" in short
+    assert "NVME: DRIVE" not in short
+    assert "Product Details" not in short
+
+    report(hunts, tmp_path, long=True)
+    detailed = capsys.readouterr().out
+    assert "HUNT: NVME" in detailed
+    assert "NVME: DRIVE" in detailed
+    assert "Product Details" in detailed
+    assert "Buying rationale" in detailed
+
+
+def test_desirability_validation(tmp_path):
+    import pytest
+
+    path = tmp_path / "drive.yaml"
+    for rating in ("9.5", "0", "10"):
+        path.write_text(f"name: Drive\ndesirability: {rating}\nretailers: []\n")
+        assert load(path)[0].desirability == Decimal(rating)
+    for rating in ("-1", "10.1", "NaN", "Infinity", "true", "excellent"):
+        path.write_text(f"name: Drive\ndesirability: {rating}\nretailers: []\n")
+        with pytest.raises(ValueError, match="desirability"):
+            load(path)
+
+
+def test_overview_rating_order(capsys):
+    from snipe.cli import Checked, hunt_overview
+    from snipe.config import Product, Retailer
+    from snipe.store import Observation
+
+    def entry(name, rating, price):
+        retailer = Retailer("Shop", "https://example.com/" + name, 7200)
+        product = Product(name, None, (retailer,), desirability=Decimal(rating) if rating is not None else None)
+        history = [Observation(datetime.now(timezone.utc), Decimal(price), True, None)] if price else []
+        return product, [Checked(retailer, history, False, None)]
+
+    hunt_overview("nvme", [entry("Unrated", None, "1"), entry("Lower", "8", "10"),
+                           entry("Premium", "9.5", "600"), entry("BetterDeal", "9.5", "500"),
+                           entry("MissingPrice", "9.5", None)])
+    output = capsys.readouterr().out
+    assert "Rating" in output
+    assert output.index("BetterDeal") < output.index("Premium") < output.index("MissingPrice") < output.index("Lower") < output.index("Unrated")
+
+
+def test_candidate_without_links(capsys):
+    from snipe.cli import hunt_overview
+    from snipe.config import Product
+
+    hunt_overview("nvme", [(Product("Pending", Decimal(575), (), desirability=Decimal(9)), [])])
+    output = capsys.readouterr().out
+    assert "Pending" in output
+    assert "NO LINKS" in output
+    assert "$575" in output

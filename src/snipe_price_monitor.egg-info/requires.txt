@@ -1,0 +1,9 @@
+beautifulsoup4>=4.12
+PyYAML>=6.0
+requests>=2.31
+
+[browser]
+playwright>=1.49
+
+[dev]
+pytest>=8.0

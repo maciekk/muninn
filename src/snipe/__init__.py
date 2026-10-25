@@ -1,0 +1,1 @@
+"""Snipe price monitor."""

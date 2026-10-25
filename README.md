@@ -2,6 +2,8 @@
 
 A cache-first, local CLI for watching product prices. It is designed for occasional sale-season use: product configuration, fetched HTML, and SQLite price history all live in the current project directory.
 
+![Muninn monitor price comparison report](docs/images/muninn-monitor-report.png)
+
 ## Install
 
 ```sh

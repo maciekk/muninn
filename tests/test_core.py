@@ -185,6 +185,33 @@ def test_short_report_only_shows_overview(tmp_path, capsys):
     assert "Buying rationale" in detailed
 
 
+def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, capsys, monkeypatch):
+    from snipe import cli
+    from snipe.config import Product, Retailer
+
+    retailer = Retailer("Shop", "https://example.test/drive", 7200)
+    product = Product("Drive", None, (retailer,))
+    warning = "PRICE_NOT_FOUND: Drive / Shop; using prior price if available"
+    monkeypatch.setattr(
+        cli,
+        "refresh_if_needed",
+        lambda store, product, retailer, session, current_time, vendor_delay: cli.Checked(
+            retailer, [], False, warning
+        ),
+    )
+
+    cli.report([("nvme", [product])], tmp_path)
+    short = capsys.readouterr().out
+    assert not any(line.startswith("Drive ") for line in short.splitlines())
+    assert f"- {warning}" in short
+
+    cli.report([("nvme", [product])], tmp_path, long=True)
+    detailed = capsys.readouterr().out
+    assert "NO PRICE" in detailed
+    assert "NVME: DRIVE" in detailed
+
+
+
 def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
     from snipe import cli
     from snipe.config import Product, Retailer

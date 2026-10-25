@@ -256,7 +256,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 
-def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False) -> None:
+def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False, skip_no_price: bool = False) -> None:
     width = report_width()
     print("═" * width)
     print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
@@ -275,6 +275,8 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
         for item in checked:
             price = item.current.price if item.current else None
             values = (product.name, rating_text, retailer_label(item.retailer), *metrics(item, product.target_price, bounds, cents=cents))
+            if skip_no_price and values[-1] == "NO PRICE":
+                continue
             rows.append((overview_order(product, price), values))
     for _, values in sorted(rows, key=lambda row: row[0]):
         print("  ".join(style_cell(cell(value, width, align), title) for (title, width, align), value in zip(columns, values)))
@@ -299,7 +301,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
             results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
             clear_progress()
             print()
-            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long)
+            track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long)
             for product, checked in results:
                 if not product.retailers:
                     warnings.append((format_warning("NO_VENDORS", product.name), None))

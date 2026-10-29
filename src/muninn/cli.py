@@ -13,7 +13,7 @@ import time
 
 import requests
 
-from . import browser
+from . import browser, browser_bridge
 from .config import Product, Retailer, load, track_range_bounds
 from .extract import extract_price
 from .store import Observation, Store
@@ -132,7 +132,12 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
         current_time += timedelta(seconds=time.monotonic() - started_waiting)
         progress(f"Fetching {label}…")
         try:
-            if retailer.fetcher in {"browser", "interactive", "browser_interactive"}:
+            if retailer.fetcher == "bridge":
+                html = browser_bridge.fetch_html(retailer.url, store.root)
+                browser.check_page(html)
+                if extract_price(html, retailer.url, retailer.price_selector) is None:
+                    raise browser.FetchError("Firefox page has no main-product price; keeping prior data")
+            elif retailer.fetcher in {"browser", "interactive", "browser_interactive"}:
                 profile_name = "browser-profile" if retailer.browser_engine == "chromium" else "browser-profile-firefox"
                 profile_dir = store.root / profile_name
                 try:
@@ -493,7 +498,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
     parser.add_argument("--url", help="with import, exact configured retailer URL")
     parser.add_argument("--html", type=Path, help="with import, saved product HTML file")
-    parser.add_argument("command", nargs="?", help="'check', 'reset', 'import', or 'help'; may be omitted (infers 'check')")
+    parser.add_argument("command", nargs="?", help="'check', 'reset', 'import', 'browser-bridge', or 'help'; may be omitted (infers 'check')")
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
@@ -516,7 +521,7 @@ def main(argv: list[str] | None = None) -> None:
     if command == "help":
         parser.print_help()
         raise SystemExit(0)
-    names = args.tracks if command in {None, "check", "reset", "import"} else [command, *args.tracks]
+    names = args.tracks if command in {None, "check", "reset", "import", "browser-bridge"} else [command, *args.tracks]
     try:
         if args.vendor and command != "reset":
             raise ValueError("--vendor is only valid with the reset command")
@@ -541,7 +546,16 @@ def main(argv: list[str] | None = None) -> None:
                     raise ValueError(f"{path} must define exactly one product")
                 products.append(configured[0])
             tracks.append((track_name, products))
-        if command == "import":
+        if command == "browser-bridge":
+            directory = args.tracks_dir.resolve().parent
+            allowed_urls = {retailer.url for _, products in tracks for product in products
+                            for retailer in product.retailers if retailer.fetcher == "bridge"}
+            browser_bridge.serve(
+                lambda url, html: import_page_html(tracks, directory, url, html),
+                directory / ".muninn" / "v1", allowed_urls,
+            )
+            status = 0
+        elif command == "import":
             price = import_saved_page(tracks, args.tracks_dir.resolve().parent, args.url, args.html)
             print(f"Imported ${price:.2f} for {args.url} (recorded at import time).")
             status = 0

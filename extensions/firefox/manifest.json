@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "Muninn tab importer",
+  "version": "0.2.0",
+  "description": "Collect configured Newegg prices in your existing Firefox session, or import the current tab.",
+  "permissions": ["activeTab", "storage", "http://127.0.0.1/*", "https://www.newegg.ca/*", "https://newegg.ca/*"],
+  "background": {"scripts": ["background.js"]},
+  "browser_action": {
+    "default_title": "Import product into Muninn",
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {"id": "tab-import@muninn.local"}
+  }
+}

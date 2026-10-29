@@ -111,8 +111,12 @@ def load(path: Path) -> tuple[Product, ...]:
             if selector is not None and not isinstance(selector, str):
                 raise ValueError("price_selector must be a string")
             fetcher = raw.get("fetcher", "http")
-            if fetcher not in ("http", "browser", "interactive", "browser_interactive", "manual"):
-                raise ValueError("fetcher must be http, browser, interactive, browser_interactive, or manual")
+            if fetcher not in ("http", "browser", "interactive", "browser_interactive", "manual", "bridge"):
+                raise ValueError("fetcher must be http, browser, interactive, browser_interactive, manual, or bridge")
+            if fetcher == "bridge":
+                from .browser_bridge import is_newegg
+                if not is_newegg(raw["url"]):
+                    raise ValueError("bridge fetching currently supports only HTTPS newegg.ca URLs")
             browser_engine = raw.get("browser_engine", "chromium")
             if browser_engine not in ("chromium", "firefox"):
                 raise ValueError("browser_engine must be chromium or firefox")

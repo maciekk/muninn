@@ -131,6 +131,86 @@ contains cookies: keep `.muninn/` private and ignored by Git.
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
 Changing fetchers does not bypass the normal refresh delay. A failed interactive or browser-interactive attempt instead uses its `retry_after` delay (one hour by default).
 
+### Automatically collect Newegg prices in your existing Firefox
+
+Use `fetcher: bridge` for Newegg Canada to let `muninn check` request rendered
+pages from your everyday Firefox session. No Playwright install is needed:
+
+```yaml
+  - name: Newegg Canada
+    url: https://www.newegg.ca/p/EXAMPLE
+    fetcher: bridge
+    refresh_after: 24h
+```
+
+1. Run `uv run muninn browser-bridge` in the project directory and leave it running.
+   Optionally restrict its allowlist with track names, e.g. `browser-bridge nvme`.
+2. Open Firefox's `about:debugging#/runtime/this-firefox`. Choose **Load Temporary
+   Add-on**, then select `extensions/firefox/manifest.json` in this repository.
+   If already installed, click **Reload** beside **Muninn tab importer** to get
+   the updated permissions and background worker. If connecting reports
+   **Could not establish connection. Receiving end does not exist**, remove the
+   temporary add-on and load `manifest.json` again; Firefox may still have the
+   older manifest without a background worker. Temporary installs disappear
+   when Firefox restarts.
+3. Click Firefox's puzzle-piece extensions button → **Muninn tab importer**.
+   Paste the token printed by the bridge and click **Connect for automatic
+   collection**. Wait for **Connected**, then close the popup.
+4. In a second terminal, run:
+
+   ```sh
+   uv run muninn reset --vendor newegg.ca  # optional: force refresh even if fresh
+   uv run muninn check
+   ```
+
+The report fetches due `bridge` URLs one at a time, using normal cache freshness,
+retry windows and vendor spacing. The extension creates one **dedicated tab**,
+then reuses it; it never navigates your other tabs. The first page opens visibly.
+If Newegg requests verification, complete it in that tab: the extension waits up
+to 150 seconds for a stable, visible main-product price. It does not solve or bypass
+verification. Leave the worker's tab on the requested product/variant while a
+check is running. Closing it mid-fetch fails that request; the next request can
+create a new dedicated tab.
+
+Only configured `bridge` URLs in the bridge's selected tracks may be requested.
+Automatic collection currently supports HTTPS `newegg.ca` / `www.newegg.ca`
+only. The final tab URL must match the configured URL exactly (apart from its
+fragment); redirects to a different variant or changed query parameters are
+rejected. The main product price is used, never a recommendation/comparison or
+other seller's price. The worker currently waits for the built-in main-price
+markup even if you configure a custom `price_selector` for extraction.
+
+If the worker is disconnected, verification times out, or no main price is found,
+the check reports `FETCH_FAILED` and keeps previous data. To retry immediately,
+reset Newegg again. After restarting the bridge, paste its **new token** and
+reconnect; after reloading the extension, reconnect too. Click **Disconnect** in
+the popup or stop the bridge with **Ctrl-C** to stop automatic collection. Keep
+one connected worker and one check at a time per project.
+
+### Import just the current Firefox tab
+
+The same extension still offers **Import current tab** for a one-off import.
+Start the bridge, paste its token into the popup, open a configured product page,
+and click **Import current tab**. Connecting the automatic worker is not required.
+Use `fetcher: manual` if you want only these user-triggered imports instead of
+automatic collection during reports. Check the product, variant, seller and
+currency before importing. Imports are timestamped at import time.
+
+### Firefox bridge privacy and setup
+
+The bridge listens only on `127.0.0.1:8765`, requires a random pairing token,
+accepts at most 10 MiB per page, and does not enable CORS for websites. The
+extension has persistent access only to Newegg Canada and loopback, plus
+`activeTab` for one-off imports on other configured retailers. Automatic polling
+starts only when you click **Connect** and continues with the popup closed.
+
+The token is stored in extension-local storage and, while the bridge is running,
+in a mode-0600 `.muninn/v1/bridge.json` file for the check command. Treat the token,
+that file and cached HTML as private: pages may contain account information. Do
+not proxy or port-forward the bridge. This is a local development extension,
+not a signed Firefox Add-ons release. Automated tests simulate the worker;
+actual Firefox permission/network behavior depends on your local installation.
+
 ### Import a page saved from your normal browser
 
 If a retailer repeatedly blocks automated browsers, select `fetcher: manual`:

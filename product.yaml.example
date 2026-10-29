@@ -21,7 +21,8 @@ retailers:
     url: https://www.newegg.ca/p/EXAMPLE
     seller: Example Marketplace Seller # Optional: the actual seller, if different from the retailer.
     seller_type: third_party # Optional: first_party or third_party; third-party listings show [3P].
-    fetcher: manual # Import HTML saved from your normal browser; never fetch automatically.
+    fetcher: bridge # Collect through your existing Firefox; see docs/usage.md for setup.
+    # fetcher: manual # Instead, import only on click or from saved HTML.
     # For an isolated Playwright browser instead:
     # fetcher: interactive
     # browser_engine: firefox # chromium (default) or firefox.

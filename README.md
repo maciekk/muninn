@@ -38,7 +38,7 @@ muninn reset monitor           # Make URLs due for refresh on the next check
 
 Checks reuse cached results for two hours by default and retry failed fetches after one hour. If a refresh fails, the last successful price is shown with a stale warning. Data lives in `.muninn/`—keep it private and ignored by Git.
 
-Built-in extractors support Amazon, Best Buy Canada, Canada Computers, Dell Canada, Newegg Canada, and Memory Express. Optional browser fetching handles sites that need rendered HTML or manual verification. For sites that block automation, use `fetcher: manual` and import HTML saved from your normal browser with `muninn import --url URL --html FILE`.
+Built-in extractors support Amazon, Best Buy Canada, Canada Computers, Dell Canada, Newegg Canada, and Memory Express. Optional browser fetching handles sites that need rendered HTML or manual verification. For Newegg Canada, `fetcher: bridge` collects pages in your existing Firefox session through the optional local extension (see usage reference). For other sites that block automation, use `fetcher: manual` and import HTML saved from your normal browser with `muninn import --url URL --html FILE`.
 
 See the **[usage reference](docs/usage.md)** for configuration, browser setup, report indicators, range scales, rate limiting, and refresh controls.
 

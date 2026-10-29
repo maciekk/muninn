@@ -75,6 +75,7 @@ def test_browser_config(tmp_path):
     path = tmp_path / 'drive.yaml'
     path.write_text('name: Drive\nretailers:\n  - name: Shop\n    url: https://example.com\n    fetcher: browser\n')
     assert load(path)[0].retailers[0].fetcher == 'browser'
+    assert load(path)[0].retailers[0].browser_engine == 'chromium'
     path.write_text(path.read_text().replace('fetcher: browser', 'fetcher: interactive'))
     assert load(path)[0].retailers[0].fetcher == 'interactive'
     path.write_text(path.read_text().replace('fetcher: interactive', 'fetcher: browser_interactive'))
@@ -157,3 +158,61 @@ def test_browser_transport_cleanup(tmp_path, monkeypatch):
     with pytest.raises(browser.FetchError):
         browser.fetch_html('https://example.com', tmp_path)
     assert context.close.call_count == 3
+
+
+@pytest.mark.parametrize('engine', ['chromium', 'firefox'])
+def test_browser_engine_config(tmp_path, engine):
+    path = tmp_path / 'drive.yaml'
+    path.write_text(f'name: Drive\nretailers:\n  - name: Shop\n    url: https://example.com\n    browser_engine: {engine}\n')
+    assert load(path)[0].retailers[0].browser_engine == engine
+    path.write_text(path.read_text().replace(engine, 'invalid'))
+    with pytest.raises(ValueError, match='browser_engine'):
+        load(path)
+
+
+@pytest.mark.parametrize('fetcher', ['browser', 'interactive', 'browser_interactive'])
+def test_firefox_refresh_uses_separate_profile(tmp_path, monkeypatch, fetcher):
+    store = Store(tmp_path)
+    retailer = Retailer('Newegg', 'https://www.newegg.ca/p/example', 7200,
+                        fetcher=fetcher, browser_engine='firefox')
+    product = Product('Drive', None, (retailer,))
+    fetch = Mock(return_value='<div class="product-price"><span class="price-current">$10.00</span></div>')
+    if fetcher == 'browser_interactive':
+        fetch.side_effect = [browser.VerificationRequired('challenge'), fetch.return_value]
+    monkeypatch.setattr(browser, 'fetch_html', fetch)
+    try:
+        result = refresh_if_needed(store, product, retailer, Mock(), datetime.now(timezone.utc))
+        assert result.current.price == Decimal('10.00')
+        for call in fetch.call_args_list:
+            assert call.args[1] == store.root / 'browser-profile-firefox'
+            assert call.kwargs['browser_engine'] == 'firefox'
+        assert fetch.call_args.kwargs['interactive'] == (fetcher != 'browser')
+    finally:
+        store.close()
+
+
+def test_firefox_transport_cleanup(tmp_path, monkeypatch):
+    import sys
+    from types import ModuleType
+    api = ModuleType('playwright.sync_api')
+    manager = Mock()
+    manager.__enter__ = Mock(return_value=manager)
+    manager.__exit__ = Mock(return_value=False)
+    context = manager.firefox.launch_persistent_context.return_value
+    page = context.new_page.return_value
+    page.goto.return_value.status = 200
+    page.content.return_value = '<h1>Drive</h1>'
+    api.sync_playwright = Mock(return_value=manager)
+    class PlaywrightError(Exception):
+        pass
+
+    api.Error = PlaywrightError
+    monkeypatch.setitem(sys.modules, 'playwright', ModuleType('playwright'))
+    monkeypatch.setitem(sys.modules, 'playwright.sync_api', api)
+    assert browser.fetch_html('https://example.com', tmp_path, browser_engine='firefox') == '<h1>Drive</h1>'
+    manager.chromium.launch_persistent_context.assert_not_called()
+    context.close.assert_called_once()
+    page.content.return_value = '<title>Just a moment...</title>'
+    with pytest.raises(browser.VerificationRequired):
+        browser.fetch_html('https://example.com', tmp_path, browser_engine='firefox')
+    assert context.close.call_count == 2

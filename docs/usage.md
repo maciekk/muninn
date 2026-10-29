@@ -98,7 +98,32 @@ Give these links a longer refresh window, for example:
     refresh_after: 24h
 ```
 
-Use `fetcher: interactive` when every browser fetch should be visible. Browser
+Use `fetcher: interactive` when every browser fetch should be visible.
+
+Choose an engine per retailer with `browser_engine: chromium` (the default) or
+`browser_engine: firefox`. This works with all three browser fetchers. Install
+Firefox separately before selecting it:
+
+```sh
+uv run playwright install firefox
+```
+
+For example, to try visible Firefox for Newegg:
+
+```yaml
+  - name: Newegg Canada
+    url: https://www.newegg.ca/p/EXAMPLE
+    fetcher: interactive
+    browser_engine: firefox
+    refresh_after: 24h
+```
+
+Firefox keeps its own cookies in `.muninn/v1/browser-profile-firefox/`; Chromium
+continues using `.muninn/v1/browser-profile/`. Neither uses your everyday browser
+profile. A different engine may improve compatibility, but does not guarantee
+that a retailer will accept automated browsing.
+
+Browser
 fetching is best-effort, not a guarantee against retailer blocking. Do not run
 simultaneous checks sharing the same browser profile. The profile
 contains cookies: keep `.muninn/` private and ignored by Git.

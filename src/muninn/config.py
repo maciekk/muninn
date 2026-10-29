@@ -23,6 +23,7 @@ class Retailer:
     retry_seconds: int = DEFAULT_RETRY_SECONDS
     seller: str | None = None
     seller_type: str | None = None
+    browser_engine: str = "chromium"
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,9 @@ def load(path: Path) -> tuple[Product, ...]:
             fetcher = raw.get("fetcher", "http")
             if fetcher not in ("http", "browser", "interactive", "browser_interactive"):
                 raise ValueError("fetcher must be http, browser, interactive, or browser_interactive")
+            browser_engine = raw.get("browser_engine", "chromium")
+            if browser_engine not in ("chromium", "firefox"):
+                raise ValueError("browser_engine must be chromium or firefox")
             seller = raw.get("seller")
             if seller is not None and (not isinstance(seller, str) or not seller.strip()):
                 raise ValueError("seller must be a non-empty string")
@@ -123,7 +127,7 @@ def load(path: Path) -> tuple[Product, ...]:
                 parse_duration(raw["refresh_after"]) if "refresh_after" in raw else product_delay,
                 selector, fetcher,
                 parse_duration(raw["retry_after"]) if "retry_after" in raw else product_retry_delay,
-                seller.strip() if seller is not None else None, seller_type,
+                seller.strip() if seller is not None else None, seller_type, browser_engine,
             ))
         raw_notes = raw_product.get("notes", [])
         if isinstance(raw_notes, str):

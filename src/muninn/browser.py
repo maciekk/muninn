@@ -34,22 +34,24 @@ def check_page(html: str) -> None:
         raise VerificationRequired("retailer returned a Continue shopping interstitial")
 
 
-def fetch_html(url: str, state_dir: Path, interactive: bool = False) -> str:
-    """Fetch rendered HTML using a persistent Chromium profile.
+def fetch_html(url: str, state_dir: Path, interactive: bool = False, browser_engine: str = "chromium") -> str:
+    """Fetch rendered HTML using a persistent profile for the selected engine.
 
     Interactive mode opens a visible browser and pauses for the user to complete
     a normal retailer verification before the rendered page is read. Playwright
     is imported lazily, so HTTP-only installations do not need it.
     """
+    if browser_engine not in ("chromium", "firefox"):
+        raise ValueError("browser_engine must be chromium or firefox")
     try:
         from playwright.sync_api import sync_playwright, Error
     except ImportError as exc:
-        raise FetchError("browser fetching requires: uv pip install -e '.[browser]'; python -m playwright install chromium") from exc
+        raise FetchError("browser fetching requires: uv pip install -e '.[browser]'; uv run playwright install chromium firefox") from exc
 
     state_dir.mkdir(parents=True, exist_ok=True)
     try:
         with sync_playwright() as playwright:
-            context = playwright.chromium.launch_persistent_context(
+            context = getattr(playwright, browser_engine).launch_persistent_context(
                 str(state_dir), headless=not interactive, locale="en-CA", timeout=30_000,
             )
             try:
@@ -86,4 +88,4 @@ def fetch_html(url: str, state_dir: Path, interactive: bool = False) -> str:
             finally:
                 context.close()
     except Error as exc:
-        raise FetchError(f"browser fetch failed (ensure Chromium is installed): {exc}") from exc
+        raise FetchError(f"browser fetch failed (ensure {browser_engine} is installed): {exc}") from exc

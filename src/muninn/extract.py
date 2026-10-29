@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 _PRICE = re.compile(r"(?:CAD\s*)?\$?\s*((?:[0-9]{1,3}(?:[,\s][0-9]{3})+|[0-9]+)(?:\.\d{2})?)", re.I)
 SELECTORS = {
     "amazon.": ["#corePrice_feature_div .a-offscreen", ".apexPriceToPay .a-offscreen", "#priceblock_ourprice", "#priceblock_dealprice"],
-    "bestbuy.ca": ["[data-automation='product-price']"],
+    "bestbuy.ca": ["[data-automation='product-price']:not([itemprop='offers'])"],
     "canadacomputers.": [".h2-big", ".product-price", "[itemprop='price']"],
     "newegg.": [".price-current", ".price-current strong", "[itemprop='price']"],
     "memoryexpress.": [".c-capr-pricing__now", ".c-capr-pricing__grand-total", ".product-price", "[itemprop='price']"],
@@ -28,8 +28,10 @@ def parse_price(text: str) -> Decimal | None:
         return None
 
 
-def _json_ld_price(soup: BeautifulSoup) -> Decimal | None:
-    for tag in soup.select("script[type='application/ld+json']"):
+def _json_ld_price(
+    soup: BeautifulSoup, script_selector: str = "script[type='application/ld+json']"
+) -> Decimal | None:
+    for tag in soup.select(script_selector):
         try:
             values = json.loads(tag.string or "")
         except json.JSONDecodeError:
@@ -57,7 +59,15 @@ def extract_price(html: str, url: str, selector: str | None = None) -> Decimal |
         if domain in host:
             selectors.extend(choices)
             break
-    selectors.extend(["meta[property='product:price:amount']", "meta[itemprop='price']", "[itemprop='price']"])
+    # Best Buy recommendation cards also expose product-price and price metadata,
+    # sometimes without any main-product price element. Never fall back to them.
+    best_buy = host == "bestbuy.ca" or host.endswith(".bestbuy.ca")
+    if best_buy and not selector:
+        result = _json_ld_price(soup, "script#product-json-ld[type='application/ld+json']")
+        if result is not None:
+            return result
+    if not best_buy:
+        selectors.extend(["meta[property='product:price:amount']", "meta[itemprop='price']", "[itemprop='price']"])
     for choice in selectors:
         try:
             node = soup.select_one(choice)
@@ -68,4 +78,4 @@ def extract_price(html: str, url: str, selector: str | None = None) -> Decimal |
             result = parse_price(value)
             if result is not None:
                 return result
-    return _json_ld_price(soup)
+    return None if best_buy else _json_ld_price(soup)

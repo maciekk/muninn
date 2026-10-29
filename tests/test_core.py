@@ -499,3 +499,32 @@ def test_report_groups_each_track_warnings_with_its_sections(tmp_path, capsys, m
             second = output.split("WARNINGS: SECOND")[1].splitlines()
             assert first[1] == "- NO_VENDORS: Alpha"
             assert second[1] == "- NO_VENDORS: Beta"
+
+
+def test_extract_best_buy_product_json_ld_without_main_price():
+    # The AW3225QF snapshot had only recommendation prices in the visible DOM.
+    html = '''
+        <span data-automation="product-price" itemprop="offers">
+          <meta itemprop="price" content="56"><span>$56</span>
+        </span>
+        <script type="application/ld+json">
+          {"@type":"Product","offers":{"price":56}}
+        </script>
+        <script id="product-json-ld" type="application/ld+json">
+          {"@type":"Product","sku":"18188524","offers":{"price":1199.99}}
+        </script>
+    '''
+    url = "https://www.bestbuy.ca/en-ca/product/example/18188524"
+    assert extract_price(html, url) == Decimal("1199.99")
+    assert extract_price(html, url, "meta[itemprop='price']") == Decimal("56")
+
+
+def test_extract_best_buy_does_not_use_recommendations_as_fallback():
+    html = '''
+        <span data-automation="product-price" itemprop="offers">
+          <meta itemprop="price" content="56"><span>$56</span>
+        </span>
+        <script id="product-json-ld" type="application/ld+json">invalid</script>
+        <script type="application/ld+json">{"offers":{"price":56}}</script>
+    '''
+    assert extract_price(html, "https://www.bestbuy.ca/en-ca/product/example") is None

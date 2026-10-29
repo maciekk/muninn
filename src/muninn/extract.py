@@ -12,7 +12,6 @@ SELECTORS = {
     "amazon.": ["#corePrice_feature_div .a-offscreen", ".apexPriceToPay .a-offscreen", "#priceblock_ourprice", "#priceblock_dealprice"],
     "bestbuy.ca": ["[data-automation='product-price']:not([itemprop='offers'])"],
     "canadacomputers.": [".h2-big", ".product-price", "[itemprop='price']"],
-    "newegg.": [".price-current", ".price-current strong", "[itemprop='price']"],
     "memoryexpress.": [".c-capr-pricing__now", ".c-capr-pricing__grand-total", ".product-price", "[itemprop='price']"],
     "dell.com": [".ps-dell-price-amount", "[data-testid='sharedPSPDellPrice']"],
 }
@@ -54,7 +53,28 @@ def _json_ld_price(
 def extract_price(html: str, url: str, selector: str | None = None) -> Decimal | None:
     soup = BeautifulSoup(html, "html.parser")
     selectors = [selector] if selector else []
-    host = urlparse(url).netloc.lower()
+    host = (urlparse(url).hostname or "").lower()
+    if host in {"newegg.ca", "newegg.com"} or host.endswith((".newegg.ca", ".newegg.com")):
+        # Seller cards, variant comparisons and recommendations carry prices too.
+        # Never fall back to those when the main product price is unavailable.
+        choices = [selector] if selector else [
+            ".product-price--x .price-current_2026",
+            ".product-price .price-current_2026",
+            ".product-price--x .price-current",
+            ".product-price .price-current",
+        ]
+        for choice in choices:
+            try:
+                nodes = soup.select(choice)
+            except Exception:  # invalid user-supplied selector
+                continue
+            for node in nodes:
+                # Newegg splits dollars and cents into strong/sup elements.
+                value = node.get("content") or node.get("value") or node.get_text("", strip=True)
+                result = parse_price(value)
+                if result is not None:
+                    return result
+        return None
     for domain, choices in SELECTORS.items():
         if domain in host:
             selectors.extend(choices)

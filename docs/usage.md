@@ -131,6 +131,46 @@ contains cookies: keep `.muninn/` private and ignored by Git.
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
 Changing fetchers does not bypass the normal refresh delay. A failed interactive or browser-interactive attempt instead uses its `retry_after` delay (one hour by default).
 
+### Import a page saved from your normal browser
+
+If a retailer repeatedly blocks automated browsers, select `fetcher: manual`:
+
+```yaml
+  - name: Newegg Canada
+    url: https://www.newegg.ca/p/EXAMPLE
+    fetcher: manual
+    refresh_after: 24h
+```
+
+Manual retailers never make network requests or open browsers during checks.
+They show the last recorded price; once due (or if no price exists), the report
+shows `MANUAL_REFRESH_REQUIRED`. `reset` makes them due but does not fetch them.
+
+1. Open the product in your everyday Firefox and wait for its price to render.
+2. Press **Cmd-S** and save as **Web Page, HTML only** (not a PDF).
+3. Import the HTML, using the **exact URL from your product YAML**, not a temporary
+   challenge/redirect URL:
+
+```sh
+uv run muninn import --url 'https://www.newegg.ca/p/EXAMPLE' --html ~/Downloads/product.html
+# Optionally restrict matching to a track:
+uv run muninn import nvme --url 'https://www.newegg.ca/p/EXAMPLE' --html ~/Downloads/product.html
+uv run muninn nvme
+```
+
+The command uses the configured price extractor (including `price_selector`),
+keeps the saved HTML in the cache, and appends a price observation at **import
+time**, not the time the file was saved. Existing history is retained, and the
+normal freshness window starts again. Challenge pages and pages without an
+extractable price are rejected without replacing the existing cache or history.
+
+Import requires a URL configured in the selected tracks and makes no network
+requests. **Check that the saved page is the correct product and variant**: the
+URL you supply determines which history receives the price; Muninn does not
+verify the saved page's product identity. Save pages privately, since they may
+contain account information. If HTML-only saves omit the price, try Firefox's
+**Web Page, complete** option and import its `.html` file (not the companion folder).
+
 ### Manually refresh selected URLs
 
 Use `reset` to make configured URLs eligible for their next check immediately. It preserves observations and cached pages; it only moves the latest attempt timestamp into the past.

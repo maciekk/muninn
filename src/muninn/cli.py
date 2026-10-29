@@ -122,7 +122,10 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
     due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
     label = f"{product.name} / {retailer.name}"
-    if due:
+    if due and retailer.fetcher == "manual":
+        warning = format_retailer_warning("MANUAL_REFRESH_REQUIRED", product, retailer, "import a saved product page; using stale data" if store.successful(retailer.url) else "import a saved product page; no cached price")
+        progress(f"Manual import needed for {label}")
+    elif due:
         progress(f"Refreshing {label} via {retailer.fetcher}…")
         started_waiting = time.monotonic()
         wait_for_vendor(store.db, retailer.url, vendor_delay)
@@ -388,7 +391,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
                     warnings.setdefault(track_name, []).append((format_warning("NO_VENDORS", product.name), None))
                 for item in checked:
                     if item.warning:
-                        url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:")) else None
+                        url = item.retailer.url if item.warning.startswith(("FETCH_FAILED:", "NO_CACHE:", "PRICE_NOT_FOUND:", "MANUAL_REFRESH_REQUIRED:")) else None
                         warnings.setdefault(track_name, []).append((item.warning, url))
         clear_progress()
         render(long and long_file is None)
@@ -406,6 +409,38 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
         session.close()
         store.close()
     return 1 if warnings else 0
+
+
+def import_saved_page(tracks: list[tuple[str, list[Product]]], directory: Path, url: str, html_path: Path) -> Decimal:
+    """Import a user-selected saved page without making any network requests."""
+    return import_page_html(tracks, directory, url, html_path.read_text(encoding="utf-8-sig"))
+
+
+def import_page_html(tracks: list[tuple[str, list[Product]]], directory: Path, url: str, html: str) -> Decimal:
+    """Validate and record rendered HTML from a saved file or browser tab."""
+    matches = [(product, retailer) for _, products in tracks for product in products
+               for retailer in product.retailers if retailer.url == url]
+    if not matches:
+        raise ValueError("URL is not configured in the selected tracks; copy the exact URL from the product YAML")
+    selectors = {retailer.price_selector for _, retailer in matches}
+    if len(selectors) != 1:
+        raise ValueError("URL has conflicting price selectors; select a single track or fix the configuration")
+    try:
+        browser.check_page(html)
+    except browser.FetchError as exc:
+        raise ValueError(f"saved page rejected: {exc}") from exc
+    product, retailer = matches[0]
+    price = extract_price(html, url, retailer.price_selector)
+    if price is None:
+        raise ValueError("saved page contains no extractable price; existing cache and history were not changed")
+    store = Store(directory)
+    try:
+        at = now()
+        cache_path, _ = store.write_html(url, html, at)
+        store.record_success(url, product.name, retailer.name, price, cache_path, at)
+    finally:
+        store.close()
+    return price
 
 
 def reset_refreshes(tracks: list[tuple[str, list[Product]]], directory: Path, vendor: str | None = None) -> tuple[int, int]:
@@ -456,7 +491,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--zebra", nargs="?", const="#E0E0E0", metavar="COLOR", help="shade alternate products; use --zebra=COLOR (default: #E0E0E0; accepts ANSI name, 0-255, or #RRGGBB)")
     parser.add_argument("--legend", action="store_true", help="show range graphic explanation")
     parser.add_argument("--vendor", metavar="HOST", help="with reset, limit to a vendor host such as newegg.ca")
-    parser.add_argument("command", nargs="?", help="'check', 'reset', or 'help'; may be omitted (infers 'check')")
+    parser.add_argument("--url", help="with import, exact configured retailer URL")
+    parser.add_argument("--html", type=Path, help="with import, saved product HTML file")
+    parser.add_argument("command", nargs="?", help="'check', 'reset', 'import', or 'help'; may be omitted (infers 'check')")
     parser.add_argument("tracks", nargs="*", help="track names")
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("--short", dest="long", action="store_false", help="track overview only (default)")
@@ -479,10 +516,14 @@ def main(argv: list[str] | None = None) -> None:
     if command == "help":
         parser.print_help()
         raise SystemExit(0)
-    names = args.tracks if command in {None, "check", "reset"} else [command, *args.tracks]
+    names = args.tracks if command in {None, "check", "reset", "import"} else [command, *args.tracks]
     try:
         if args.vendor and command != "reset":
             raise ValueError("--vendor is only valid with the reset command")
+        if command == "import" and (not args.url or args.html is None):
+            raise ValueError("import requires --url and --html")
+        if command != "import" and (args.url is not None or args.html is not None):
+            raise ValueError("--url and --html are only valid with the import command")
         file_groups = track_files(args.tracks_dir, names)
         tracks: list[tuple[str, list[Product]]] = []
         configured_bounds: dict[str, tuple[Decimal | None, Decimal | None]] = {}
@@ -500,7 +541,11 @@ def main(argv: list[str] | None = None) -> None:
                     raise ValueError(f"{path} must define exactly one product")
                 products.append(configured[0])
             tracks.append((track_name, products))
-        if command == "reset":
+        if command == "import":
+            price = import_saved_page(tracks, args.tracks_dir.resolve().parent, args.url, args.html)
+            print(f"Imported ${price:.2f} for {args.url} (recorded at import time).")
+            status = 0
+        elif command == "reset":
             marked, already_due = reset_refreshes(tracks, args.tracks_dir.resolve().parent, args.vendor)
             scope = f" for {args.vendor}" if args.vendor else ""
             print(f"Reset {marked} retailer refresh timestamp(s){scope}; {already_due} URL(s) had no attempt and were already due.")

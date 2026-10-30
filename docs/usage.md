@@ -104,7 +104,10 @@ products sort after rated ones; missing prices sort last within a rating. The
 
 - `TARGET MET!` — current price is at or below the product target.
 - `NEW LOW!` — current price is the lowest successful observation stored for that URL.
-- `↓ $…` / `↑ $…` — change from the preceding successful observation.
+- `↓ $…` / `↑ $…` — every nonzero change from the preceding successful observation.
+  Compact tables mark noteworthy prices (target met or new low) with `★` beside
+  the delta (or `—` when there is no change). Full status messages appear in
+  `--long` reports and TUI listing details.
 
 Use normal scheduling (for example cron) to run `muninn`; the freshness window prevents unnecessary requests. Interactive reports use colour and bold emphasis by default; piped/cron output is plain. Override this with `--color always` or `--color never`.
 

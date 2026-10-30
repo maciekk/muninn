@@ -24,7 +24,7 @@ TABLE_COLUMNS = ('Product', 'Rating', 'Vendor', 'Target', 'Now', 'Age', 'Range',
 
 def fitted_widths(values: list[tuple[str, ...]], available: int) -> list[int]:
     """Spend spare space on labels, shrinking those before prices and status."""
-    widths = [max([Text(title).cell_len] + [Text(row[index]).cell_len for row in values])
+    widths = [max([Text(title).cell_len] + [max(Text(line).cell_len for line in row[index].split("\n")) for row in values])
               for index, title in enumerate(TABLE_COLUMNS)]
     widths[0] = min(widths[0], 48)
     widths[2] = min(widths[2], 24)
@@ -166,7 +166,8 @@ def retailer_details(item: Checked, track: TrackSnapshot, product: ProductSnapsh
     report.section('PRICE SUMMARY')
     report.field('Current cached price:', price, 'bold blue' if item.current else 'bold yellow')
     report.field('Target price:', target, 'bold')
-    report.field('Status:', status, detail_status_style(status))
+    for index, line in enumerate(status.split('\n')):
+        report.field('Status:' if index == 0 else '', line, detail_status_style(line))
     report.field('Price age:', data_age(item, now()), secondary=True)
     report.field('Price range:', graphic, 'cyan')
     report.field('Range scale:', f'{money(track.bounds[0])}–{money(track.bounds[1])}', secondary=True)
@@ -385,7 +386,7 @@ class ResultsApp(App):
                 if item and price is None and not self.show_missing:
                     hidden += 1
                     continue
-                target, price_text, graphic, status = metrics(item, product.target_price, track.bounds, cents=False) if item else (
+                target, price_text, graphic, status = metrics(item, product.target_price, track.bounds, cents=False, detailed=False) if item else (
                     money(product.target_price, cents=False) if product.target_price is not None else '—',
                     '—', '—', 'NO LINKS')
                 if item and item.warning:
@@ -412,7 +413,7 @@ class ResultsApp(App):
                 text = Text(value, no_wrap=True)
                 text.truncate(width, overflow='ellipsis')
                 cells.append(text)
-            table.add_row(*cells, key=key)
+            table.add_row(*cells, key=key, height=max(value.count('\n') + 1 for value in values))
         key = self.selections.get(track.name)
         if key in self.rows:
             table.move_cursor(row=list(self.rows).index(key))

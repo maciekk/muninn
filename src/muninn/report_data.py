@@ -11,10 +11,6 @@ from .store import Observation, Store
 from .visualization import DEFAULT_BOUNDS, price_range
 
 
-# Suppress insignificant retailer-price fluctuations in change indicators.
-CHANGE_ALERT_THRESHOLD = Decimal("10")
-
-
 @dataclass
 class Checked:
     retailer: Retailer
@@ -56,21 +52,26 @@ def retailer_label(retailer: Retailer) -> str:
     return f"{retailer.name} [3P]" if retailer.seller_type == "third_party" else retailer.name
 
 
-def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None, cents: bool = True) -> tuple[str, str, str, str]:
+def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None, cents: bool = True, *, detailed: bool = True) -> tuple[str, str, str, str]:
     current = item.current
     target_text = money(target, cents=cents) if target is not None else "—"
     if not current or current.price is None:
         return target_text, "—", price_range([], target), "NO PRICE"
     prices = [x.price for x in item.history if x.price is not None]
     status = "—"
+    if len(prices) > 1:
+        delta = current.price - prices[-2]
+        if delta:
+            # Compact reports must not round a nonzero change to $0.
+            amount = money(abs(delta), cents=cents or abs(delta) < 1)
+            status = f"{'↑' if delta > 0 else '↓'} {amount}"
+    special = None
     if target is not None and current.price <= target:
-        status = "TARGET MET!"
+        special = "TARGET MET!"
     elif item.refreshed and (len(prices) == 1 or current.price < min(prices[:-1])):
-        status = "NEW LOW!"
-    elif len(prices) > 1 and prices[-2] - current.price >= CHANGE_ALERT_THRESHOLD:
-        status = f"↓ {money(prices[-2] - current.price, cents=cents)}"
-    elif len(prices) > 1 and current.price > prices[-2]:
-        status = f"↑ {money(current.price - prices[-2], cents=cents)}"
+        special = "NEW LOW!"
+    if special:
+        status = f"{status}\n{special}" if detailed else f"{status} ★"
     return target_text, money(current.price, cents=cents), price_range(prices, target, bounds), status
 
 

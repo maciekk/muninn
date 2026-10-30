@@ -236,6 +236,17 @@ def style_cell(value: str, column: str, background: str | None = None) -> str:
     return paint(value, *styles, background=background)
 
 
+def print_table_row(columns, values, background: str | None = None) -> None:
+    """Render multiline cells without disturbing column alignment or zebra bands."""
+    lines = [value.split("\n") for value in values]
+    separator = paint("  ", background=background)
+    for index in range(max(map(len, lines))):
+        print(separator.join(
+            style_cell(cell(parts[index] if index < len(parts) else "", width, align), title, background)
+            for (title, width, align), parts in zip(columns, lines)
+        ))
+
+
 def range_legend(bounds: tuple[Decimal, Decimal] | None) -> None:
     scale = f"{money(bounds[0])}–{money(bounds[1])}  " if bounds is not None else ""
     print()
@@ -258,9 +269,9 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
     columns = (("Vendor", width - 67, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Age", 4, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
     print("  ".join(paint(cell(name, width, align), "bold") for name, width, align in columns))
     for item in checked:
-        target, price, graphic, status = metrics(item, product.target_price, bounds)
+        target, price, graphic, status = metrics(item, product.target_price, bounds, detailed=long)
         values = (retailer_label(item.retailer), target, price, data_age(item, current_time), graphic, status)
-        print("  ".join(style_cell(cell(value, width, align), name) for (name, width, align), value in zip(columns, values)))
+        print_table_row(columns, values)
     if legend:
         range_legend(bounds)
     if not long:
@@ -306,7 +317,7 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
 
-def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False, skip_no_price: bool = False, zebra_background: str | None = None) -> None:
+def track_overview(name: str, results: list[tuple[Product, list[Checked]]], bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, cents: bool = False, skip_no_price: bool = False, zebra_background: str | None = None, detailed: bool = False) -> None:
     width = report_width()
     print("═" * width)
     print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
@@ -325,7 +336,7 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
             rows.append((overview_order(product, None), values))
         for item in checked:
             price = item.current.price if item.current else None
-            target, price_text, graphic, status = metrics(item, product.target_price, bounds, cents=cents)
+            target, price_text, graphic, status = metrics(item, product.target_price, bounds, cents=cents, detailed=detailed)
             values = (product.name, rating_text, retailer_label(item.retailer), target, price_text, data_age(item, current_time), graphic, status)
             if skip_no_price and values[-1] == "NO PRICE":
                 continue
@@ -337,9 +348,7 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
             product_number += 1
             previous_product = values[0]
         background = zebra_background if product_number % 2 else None
-        separator = paint("  ", background=background)
-        print(separator.join(style_cell(cell(value, width, align), title, background)
-                             for (title, width, align), value in zip(columns, values)))
+        print_table_row(columns, values, background)
 
     if legend:
         range_legend(bounds)
@@ -361,7 +370,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
 
             print()
             track_overview(track_name, results, bounds=track_bound, legend=legend, cents=long, skip_no_price=not long,
-                           zebra_background=zebra_background)
+                           zebra_background=zebra_background, detailed=long)
 
             track_warnings = warnings.get(track_name, ())
             if track_warnings:

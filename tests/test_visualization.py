@@ -40,7 +40,7 @@ def test_money_preserves_nonzero_cents():
     assert money(Decimal('1099.99')) == '$1,099.99'
 
 
-def test_price_drop_status_requires_meaningful_change():
+def test_price_drop_status_includes_small_changes():
     retailer = Retailer('Vendor', 'https://example.com', 7200)
 
     def status(previous, current):
@@ -50,7 +50,7 @@ def test_price_drop_status_requires_meaningful_change():
         ]
         return metrics(Checked(retailer, history, False, None), None)[-1]
 
-    assert status('100', '90.01') == '—'
+    assert status('100', '90.01') == '↓ $9.99'
     assert status('100', '90') == '↓ $10.00'
 
 
@@ -361,3 +361,60 @@ def test_cli_long_report_labels_legacy_reset_timestamp_unknown(capsys, monkeypat
     assert 'unknown (legacy reset)' in report
     assert '1969' not in report and '1970' not in report
     assert data_age(Checked(retailer, history, False, None), datetime.now(timezone.utc)) == '—'
+
+
+@pytest.mark.parametrize('prices,target,refreshed,expected', [
+    (['100', '90'], None, True, '↓ $10.00\nNEW LOW!'),
+    (['100', '90'], '95', True, '↓ $10.00\nTARGET MET!'),
+    (['90', '95'], '100', False, '↑ $5.00\nTARGET MET!'),
+    (['90', '90'], '100', False, '—\nTARGET MET!'),
+    (['90'], None, True, '—\nNEW LOW!'),
+    (['90', '90'], None, False, '—'),
+    (['90', '89.99'], None, False, '↓ $0.01'),
+])
+def test_status_preserves_delta_with_special_status(prices, target, refreshed, expected):
+    retailer = Retailer('Vendor', 'https://example.com', 7200)
+    history = [Observation(datetime.now(timezone.utc), Decimal(p), True, None) for p in prices]
+    item = Checked(retailer, history, refreshed, None)
+    for cents in (True, False):
+        status = metrics(item, Decimal(target) if target else None, cents=cents)[-1]
+        assert status == (expected if cents else expected.replace('.00', ''))
+        compact = metrics(item, Decimal(target) if target else None, cents=cents, detailed=False)[-1]
+        assert compact == status.split('\n')[0] + (' ★' if '\n' in status else '')
+
+
+@pytest.mark.parametrize('overview', [True, False])
+def test_special_status_on_aligned_second_line(capsys, monkeypatch, overview):
+    import muninn.cli as cli
+    monkeypatch.setattr(cli, '_COLOR', False)
+    monkeypatch.setattr(cli, 'report_width', lambda: 120)
+    retailer = Retailer('Vendor', 'https://example.com', 7200)
+    product = Product('Drive', Decimal(100), (retailer,))
+    history = [Observation(datetime.now(timezone.utc), Decimal(p), True, None) for p in ('110', '90')]
+    item = Checked(retailer, history, True, None)
+    if overview:
+        track_overview('nvme', [(product, [item])], cents=True, detailed=True)
+    else:
+        product_report('nvme', product, [item], long=True)
+    lines = capsys.readouterr().out.splitlines()
+    index = next(i for i, line in enumerate(lines) if '↓ $20.00' in line)
+    assert lines[index + 1].strip() == 'TARGET MET!'
+    assert lines[index].index('↓') == lines[index + 1].index('TARGET MET!')
+    assert len(lines[index]) == len(lines[index + 1]) == 120
+
+
+@pytest.mark.parametrize('overview', [True, False])
+def test_compact_status_uses_star_without_extra_line(capsys, monkeypatch, overview):
+    import muninn.cli as cli
+    monkeypatch.setattr(cli, '_COLOR', False)
+    retailer = Retailer('Vendor', 'https://example.com', 7200)
+    product = Product('Drive', Decimal(100), (retailer,))
+    history = [Observation(datetime.now(timezone.utc), Decimal(p), True, None) for p in ('110', '90')]
+    item = Checked(retailer, history, True, None)
+    if overview:
+        track_overview('nvme', [(product, [item])])
+    else:
+        product_report('nvme', product, [item])
+    output = capsys.readouterr().out
+    assert '↓ $20' in output and '★' in output
+    assert 'TARGET MET!' not in output

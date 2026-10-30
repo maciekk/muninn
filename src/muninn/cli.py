@@ -121,7 +121,7 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
     due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
-    label = f"{product.name} / {retailer.name}"
+    label = f"{retailer.name} / {product.name}"
     if due and retailer.fetcher == "manual":
         warning = format_retailer_warning("MANUAL_REFRESH_REQUIRED", product, retailer, "import a saved product page; using stale data" if store.successful(retailer.url) else "import a saved product page; no cached price")
         progress(f"Manual import needed for {label}")

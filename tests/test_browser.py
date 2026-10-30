@@ -31,9 +31,9 @@ def test_refresh_reports_progress_to_stderr(tmp_path, capsys):
     try:
         refresh_if_needed(store, product, retailer, session, datetime.now(timezone.utc))
         output = capsys.readouterr()
-        assert 'Refreshing Drive / Shop via http' in output.err
-        assert 'Fetching Drive / Shop' in output.err
-        assert 'Updated Drive / Shop: $10.00' in output.err
+        assert 'Refreshing Shop / Drive via http' in output.err
+        assert 'Fetching Shop / Drive' in output.err
+        assert 'Updated Shop / Drive: $10.00' in output.err
         assert not output.out
     finally:
         store.close()
@@ -46,12 +46,12 @@ def test_interactive_progress_replaces_one_status_line(monkeypatch):
 
     terminal = Terminal()
     monkeypatch.setattr('sys.stderr', terminal)
-    progress('Fetching Drive / Shop…')
-    progress('Updated Drive / Shop: $10.00')
+    progress('Fetching Shop / Drive…')
+    progress('Updated Shop / Drive: $10.00')
     clear_progress()
     assert terminal.getvalue() == (
-        '\r\033[2K[muninn] Fetching Drive / Shop…'
-        '\r\033[2K[muninn] Updated Drive / Shop: $10.00'
+        '\r\033[2K[muninn] Fetching Shop / Drive…'
+        '\r\033[2K[muninn] Updated Shop / Drive: $10.00'
         '\r\033[2K'
     )
 

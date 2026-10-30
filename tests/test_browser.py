@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from muninn import browser
-from muninn.cli import clear_progress, progress, refresh_if_needed
+from muninn.cli import clear_progress, progress, refresh_if_needed, report
 from muninn.config import Product, Retailer, load
 from muninn.store import Store
 
@@ -29,31 +29,67 @@ def test_refresh_reports_progress_to_stderr(tmp_path, capsys):
     retailer = Retailer('Shop', 'https://example.com/drive', 7200)
     product = Product('Drive', None, (retailer,))
     try:
-        refresh_if_needed(store, product, retailer, session, datetime.now(timezone.utc))
+        refresh_if_needed(store, product, retailer, session, datetime.now(timezone.utc), track_name="ssd")
         output = capsys.readouterr()
-        assert 'Refreshing Shop / Drive via http' in output.err
-        assert 'Fetching Shop / Drive' in output.err
-        assert 'Updated Shop / Drive: $10.00' in output.err
+        assert 'Refreshing ssd / Shop / Drive via http' in output.err
+        assert 'Fetching ssd / Shop / Drive' in output.err
+        assert 'Updated ssd / Shop / Drive: $10.00' in output.err
         assert not output.out
     finally:
         store.close()
 
 
-def test_interactive_progress_replaces_one_status_line(monkeypatch):
+@pytest.mark.parametrize("color", [True, False])
+def test_interactive_progress_replaces_one_status_line(monkeypatch, color):
     class Terminal(StringIO):
         def isatty(self):
             return True
 
     terminal = Terminal()
     monkeypatch.setattr('sys.stderr', terminal)
-    progress('Fetching Shop / Drive…')
-    progress('Updated Shop / Drive: $10.00')
+    monkeypatch.setattr('muninn.cli._PROGRESS_COLOR', color)
+    progress('Fetching', track='monitor', merchant='Amazon Canada', product='Dell U2725QE', detail='…')
+    progress('Updated', track='ssd', merchant='Shop', product='Drive', detail=': $10.00')
     clear_progress()
+
+    def styled(text, code):
+        return f'\033[{code}m{text}\033[0m' if color else text
+
+    prefix = styled('[muninn]', '2')
     assert terminal.getvalue() == (
-        '\r\033[2K[muninn] Fetching Shop / Drive…'
-        '\r\033[2K[muninn] Updated Shop / Drive: $10.00'
+        f"\r\033[2K{prefix} {'Fetching':12} {styled('monitor'.ljust(12), '2')} "
+        f"{styled('Amazon Canada'.ljust(20), '1')} Dell U2725QE…"
+        f"\r\033[2K{prefix} {'Updated':12} {styled('ssd'.ljust(12), '2')} "
+        f"{styled('Shop'.ljust(20), '1')} Drive: $10.00"
         '\r\033[2K'
     )
+
+
+def test_progress_truncates_only_terminal_columns(monkeypatch, capsys):
+    track = 'a very long track name'
+    merchant = 'a very long merchant name'
+    product = 'a very long product name left completely untouched'
+    terminal = StringIO()
+    monkeypatch.setattr(terminal, 'isatty', lambda: True)
+    monkeypatch.setattr('muninn.cli._PROGRESS_COLOR', False)
+    with monkeypatch.context() as patch:
+        patch.setattr('sys.stderr', terminal)
+        progress('Fetching', track=track, merchant=merchant, product=product)
+        clear_progress()
+    assert terminal.getvalue() == (
+        f"\r\033[2K[muninn] {'Fetching':12} {track[:11]}… {merchant[:19]}… {product}\r\033[2K"
+    )
+    progress('Fetching', track=track, merchant=merchant, product=product)
+    assert capsys.readouterr().err == f'[muninn] Fetching {track} / {merchant} / {product}\n'
+
+
+def test_report_passes_track_names_to_progress(tmp_path, capsys):
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200, fetcher='manual')
+    product = Product('Drive', None, (retailer,))
+    report([('monitor', [product]), ('ssd', [product])], tmp_path)
+    output = capsys.readouterr()
+    assert '[muninn] Manual monitor / Shop / Drive; import needed' in output.err
+    assert '[muninn] Manual ssd / Shop / Drive; import needed' in output.err
 
 
 def test_http_challenge_is_reported_before_status_error(tmp_path, monkeypatch):

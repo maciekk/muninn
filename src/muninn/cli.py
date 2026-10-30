@@ -24,6 +24,7 @@ USER_AGENT = "muninn-price-monitor/0.1 (+local cache-first price checking)"
 # Suppress insignificant retailer-price fluctuations in change indicators.
 CHANGE_ALERT_THRESHOLD = Decimal("10")
 _COLOR = False
+_PROGRESS_COLOR = True
 _RESET = "\033[0m"
 _STYLES = {"bold": "1", "dim": "2", "inverse": "7", "red": "31", "green": "32", "yellow": "33", "blue": "34", "cyan": "36", "bright_green": "92"}
 _BACKGROUND_COLORS = {
@@ -77,18 +78,27 @@ def now() -> datetime:
 _progress_active = False
 
 
-def progress(message: str) -> None:
-    """Update the interactive fetch status without mixing it into report output."""
+def progress(action: str, *, track: str = "", merchant: str, product: str, detail: str = "") -> None:
+    """Render one aligned terminal row, or a complete plain-text log event."""
     global _progress_active
     if sys.stderr.isatty():
-        # Clear the complete prior line: a shorter replacement must not leave a
-        # suffix from the previous message visible.
-        sys.stderr.write(f"\r\033[2K[muninn] {message}")
+        def column(value: str, width: int, style: str | None = None) -> str:
+            value = (value[:width - 1] + "…") if len(value) > width else value
+            value = value.ljust(width)
+            if style and _PROGRESS_COLOR:
+                return f"\033[{_STYLES[style]}m{value}{_RESET}"
+            return value
+
+        prefix = column("[muninn]", 8, "dim")
+        message = (f"{column(action, 12)} {column(track, 12, 'dim')} "
+                   f"{column(merchant, 20, 'bold')} {product}{detail}")
+        # Clear the complete prior line, including any longer previous suffix.
+        sys.stderr.write(f"\r\033[2K{prefix} {message}")
         sys.stderr.flush()
         _progress_active = True
     else:
-        # Preserve one event per line when stderr is redirected (e.g. cron).
-        print(f"[muninn] {message}", file=sys.stderr, flush=True)
+        label = " / ".join(part for part in (track, merchant, product) if part)
+        print(f"[muninn] {action} {label}{detail}", file=sys.stderr, flush=True)
 
 
 def clear_progress() -> None:
@@ -116,21 +126,24 @@ def format_retailer_warning(kind: str, product: Product, retailer: Retailer, pro
     return format_warning(kind, f"{detail}; {problem}" if problem else detail)
 
 
-def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0) -> Checked:
+def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "") -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
     due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
-    label = f"{retailer.name} / {product.name}"
+
+    def status(action: str, detail: str = "") -> None:
+        progress(action, track=track_name, merchant=retailer.name, product=product.name, detail=detail)
+
     if due and retailer.fetcher == "manual":
         warning = format_retailer_warning("MANUAL_REFRESH_REQUIRED", product, retailer, "import a saved product page; using stale data" if store.successful(retailer.url) else "import a saved product page; no cached price")
-        progress(f"Manual import needed for {label}")
+        status("Manual", "; import needed")
     elif due:
-        progress(f"Refreshing {label} via {retailer.fetcher}…")
+        status("Refreshing", f" via {retailer.fetcher}…")
         started_waiting = time.monotonic()
         wait_for_vendor(store.db, retailer.url, vendor_delay)
         current_time += timedelta(seconds=time.monotonic() - started_waiting)
-        progress(f"Fetching {label}…")
+        status("Fetching", "…")
         try:
             if retailer.fetcher == "bridge":
                 html = browser_bridge.fetch_html(retailer.url, store.root)
@@ -150,7 +163,7 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
                 except browser.VerificationRequired:
                     if retailer.fetcher != "browser_interactive":
                         raise
-                    progress(f"Verification required for {label}; opening browser…")
+                    status("Verify", "; verification required; opening browser…")
                     html = browser.fetch_html(
                         retailer.url, profile_dir, interactive=True, browser_engine=retailer.browser_engine,
                     )
@@ -165,17 +178,17 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
             cache_path, cached_html = store.write_html(retailer.url, html, current_time)
             price = extract_price(cached_html, retailer.url, retailer.price_selector)
             store.record_success(retailer.url, product.name, retailer.name, price, cache_path, current_time)
-            progress(f"Updated {label}" + (f": ${price}" if price is not None else "; price not found"))
+            status("Updated", f": ${price}" if price is not None else "; price not found")
         except (requests.RequestException, browser.FetchError) as exc:
             warning = format_retailer_warning("FETCH_FAILED", product, retailer, f"using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
-            progress(f"Failed {label}; keeping stale data")
+            status("Failed", "; keeping stale data")
         except OSError as exc:
             warning = format_retailer_warning("CACHE_FAILED", product, retailer, f"using stale data ({exc})")
             store.record_failure(retailer.url, product.name, retailer.name, str(exc), current_time)
-            progress(f"Failed {label}; keeping stale data")
+            status("Failed", "; keeping stale data")
     else:
-        progress(f"Using cached data for {label}")
+        status("Cached", "; using cached data")
     history = store.successful(retailer.url)
     if not history and warning is None:
         warning = format_retailer_warning("NO_CACHE", product, retailer)
@@ -389,7 +402,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)
-            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay) for retailer in product.retailers]) for product in products]
+            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay, track_name=track_name) for retailer in product.retailers]) for product in products]
             collected.append((track_name, results, track_bound))
             for product, checked in results:
                 if not product.retailers:
@@ -515,7 +528,8 @@ def main(argv: list[str] | None = None) -> None:
         if argument in bare_defaults:
             arguments[index] = f"{argument}={bare_defaults[argument]}"
     args = parser.parse_intermixed_args(arguments)
-    global _COLOR
+    global _COLOR, _PROGRESS_COLOR
+    _PROGRESS_COLOR = args.color != "never"
     _COLOR = args.color == "always" or (args.color == "auto" and sys.stdout.isatty())
     command = args.command
     if command == "help":

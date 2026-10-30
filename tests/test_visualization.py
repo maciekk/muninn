@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 
-from muninn.cli import Checked, track_overview, metrics, money, product_report
+from muninn.cli import Checked, track_overview, metrics, money, product_report, data_age
 from muninn.config import Product, Retailer
 from muninn.store import Observation
 from muninn.visualization import price_range, RANGE_WIDTH
@@ -238,3 +238,55 @@ def test_long_report_sorts_vendors_by_current_price(capsys, monkeypatch):
                  if line and line.split()[0] in expected]
         assert names == expected
     assert checked == original
+
+
+@pytest.mark.parametrize('seconds,expected', [
+    (-10, '0s'), (0, '0s'), (10, '10s'), (59, '59s'), (60, '60s'),
+    (75, '75s'), (119, '119s'), (120, '2m'), (300, '5m'),
+    (3600, '60m'), (4500, '75m'), (7199, '119m'), (7200, '2h'),
+    (14400, '4h'), (86400, '24h'), (90000, '25h'), (172799, '47h'),
+    (172800, '2d'), (259200, '3d'),
+])
+def test_data_age_units(seconds, expected):
+    at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    item = Checked(retailer, [Observation(at - timedelta(seconds=seconds), Decimal('10'), True, None)], False, None)
+    assert data_age(item, at) == expected
+
+
+@pytest.mark.parametrize('history', [[], [Observation(datetime.now(timezone.utc), None, True, None)]])
+def test_data_age_missing_price(history):
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    assert data_age(Checked(retailer, history, False, None), datetime.now(timezone.utc)) == '—'
+
+
+@pytest.mark.parametrize('width', [100, 120])
+@pytest.mark.parametrize('overview', [True, False])
+def test_tables_include_aligned_age_of_displayed_price(monkeypatch, capsys, width, overview):
+    from muninn import cli
+    at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(cli, 'now', lambda: at)
+    monkeypatch.setattr(cli, 'report_width', lambda: width)
+    monkeypatch.setattr(cli, '_COLOR', False)
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    product = Product('Drive', None, (retailer,))
+    item = Checked(retailer, [Observation(at - timedelta(minutes=75), Decimal('10'), True, None)],
+                   False, 'FETCH_FAILED: using stale data')
+    missing = Checked(Retailer('Other', 'https://example.com/other', 7200), [], False, 'NO_CACHE')
+    if overview:
+        cli.track_overview('nvme', [(product, [item, missing]), (Product('Unlisted', None, ()), [])])
+    else:
+        cli.product_report('nvme', product, [item, missing])
+    lines = capsys.readouterr().out.splitlines()
+    header = next(line for line in lines if 'Age' in line)
+    age_start = header.index('Age') - 1  # Four-character right-aligned column.
+    row = next(line for line in lines if 'Shop' in line)
+    assert row[age_start:age_start + 4] == ' 75m'
+    assert len(header) == len(row) == width
+    missing_row = next(line for line in lines if 'Other' in line)
+    assert missing_row[age_start:age_start + 4] == '   —'
+    assert 'NO PRICE' in missing_row
+    if overview:
+        unlisted = next(line for line in lines if 'Unlisted' in line)
+        assert unlisted[age_start:age_start + 4] == '   —'
+        assert 'NO LINKS' in unlisted

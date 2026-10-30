@@ -269,7 +269,8 @@ def test_desirability_validation(tmp_path):
             load(path)
 
 
-def test_overview_rating_order(capsys):
+def test_overview_rating_order(capsys, monkeypatch):
+    monkeypatch.setattr("muninn.cli.report_width", lambda: 120)
     from muninn.cli import Checked, track_overview
     from muninn.config import Product, Retailer
     from muninn.store import Observation

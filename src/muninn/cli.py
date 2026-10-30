@@ -257,6 +257,18 @@ def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decima
     return target_text, money(current.price, cents=cents), price_range(prices, target, bounds), status
 
 
+def data_age(item: Checked, current_time: datetime) -> str:
+    """Age of the displayed price; retain finer units until two larger units."""
+    current = item.current
+    if current is None or current.price is None:
+        return "—"
+    seconds = max(0, int((current_time - current.fetched_at).total_seconds()))
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= 2 * size:
+            return f"{seconds // size}{unit}"
+    return f"{seconds}s"
+
+
 def truncate(value: str, width: int) -> str:
     if len(value) <= width:
         return value
@@ -308,10 +320,12 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         heading += f"  |  TARGET: {money(product.target_price)}"
     print(paint(heading, "cyan", "bold"))
     print()
-    columns = (("Vendor", width - 61, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
+    current_time = now()
+    columns = (("Vendor", width - 67, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Age", 4, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 16, "left"))
     print("  ".join(paint(cell(name, width, align), "bold") for name, width, align in columns))
     for item in checked:
-        values = (retailer_label(item.retailer), *metrics(item, product.target_price, bounds))
+        target, price, graphic, status = metrics(item, product.target_price, bounds)
+        values = (retailer_label(item.retailer), target, price, data_age(item, current_time), graphic, status)
         print("  ".join(style_cell(cell(value, width, align), name) for (name, width, align), value in zip(columns, values)))
     if legend:
         range_legend(bounds)
@@ -361,7 +375,8 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
     print("═" * width)
     print(paint(f"TRACK: {name.upper()}", "cyan", "bold"))
     print()
-    columns = (("Product", width - 83, "left"), ("Rating", 6, "right"), ("Vendor", 16, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 12, "left"))
+    current_time = now()
+    columns = (("Product", width - 89, "left"), ("Rating", 6, "right"), ("Vendor", 16, "left"), ("Target", 10, "right"), ("Now", 10, "right"), ("Age", 4, "right"), ("Range", RANGE_WIDTH, "left"), ("Status", 12, "left"))
     print("  ".join(paint(cell(title, width, align), "bold") for title, width, align in columns))
     rows = []
     for product, checked in results:
@@ -370,11 +385,12 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
         # No verified listing yet: retain the candidate visibly, without fetching
         # search pages or substituting a different capacity/model.
         if not checked:
-            values = (product.name, rating_text, "—", money(product.target_price, cents=cents) if product.target_price is not None else "—", "—", price_range([], product.target_price), "NO LINKS")
+            values = (product.name, rating_text, "—", money(product.target_price, cents=cents) if product.target_price is not None else "—", "—", "—", price_range([], product.target_price), "NO LINKS")
             rows.append((overview_order(product, None), values))
         for item in checked:
             price = item.current.price if item.current else None
-            values = (product.name, rating_text, retailer_label(item.retailer), *metrics(item, product.target_price, bounds, cents=cents))
+            target, price_text, graphic, status = metrics(item, product.target_price, bounds, cents=cents)
+            values = (product.name, rating_text, retailer_label(item.retailer), target, price_text, data_age(item, current_time), graphic, status)
             if skip_no_price and values[-1] == "NO PRICE":
                 continue
             rows.append((overview_order(product, price), values))

@@ -299,7 +299,13 @@ class ResultsApp(App):
     #status { height: auto; padding: 0 1; }
     #results { height: 1fr; }
     #details { padding: 1 2; }
-    #product-heading { height: auto; margin-bottom: 2; }
+    #product-heading {
+        height: auto;
+        margin-bottom: 2;
+        padding: 1 2;
+        background: $surface;
+        border-left: thick $primary;
+    }
     #retailer-details { height: auto; }
     '''
     BINDINGS = [('q', 'quit', 'Quit'), ('t', 'tracks', 'Tracks'),

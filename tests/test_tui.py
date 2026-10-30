@@ -482,3 +482,26 @@ def test_slow_appearance_check_does_not_block_navigation(tmp_path, monkeypatch):
             await pilot.press('escape', 'q')
         assert cancelled.is_set()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('theme', ['textual-light', 'textual-dark'])
+def test_product_masthead_distinguishes_it_from_unframed_listing(tmp_path, theme):
+    async def scenario():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.theme = theme
+            await pilot.press('enter')
+            await pilot.pause()
+            product = app.screen.query_one('#product-heading', Static)
+            listing = app.screen.query_one('#retailer-details', Static)
+            assert product.styles.border.left[0] == 'thick'
+            assert all(edge[0] == '' for edge in (
+                product.styles.border.top, product.styles.border.right, product.styles.border.bottom))
+            assert product.styles.background.a > 0
+            assert product.styles.background != listing.styles.background
+            assert product.styles.margin.bottom == 2
+            assert all(edge[0] == '' for edge in listing.styles.border)
+            assert 'Buying notes [literal]' in product.renderable.plain
+            assert 'Cheap' in listing.renderable.plain
+            assert 'Expensive' not in listing.renderable.plain
+    asyncio.run(scenario())

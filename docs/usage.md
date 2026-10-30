@@ -35,8 +35,10 @@ product, keeping all of a product's retailer rows on the same background.
 
 - Arrows move the table cursor; Enter or a row click opens an unframed,
   printout-style report for **only the selected retailer listing**.
-- Details retain full product information (target, rating, notes, source YAML)
-  and the selected vendor's seller information, URL, price/status, cache and
+- Product information (target, rating, notes, source YAML) sits in a subtly
+  tinted masthead with a single left accent rule, not an enclosing box. The
+  selected vendor's unframed report follows below, with seller information,
+  URL, price/status, cache and
   latest-attempt timestamps, errors/warnings, and collection settings. History
   includes all-time numeric lows/highs and every successful priced observation
   in a timestamped ledger with right-aligned prices and an ASCII price plot.

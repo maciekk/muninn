@@ -91,7 +91,7 @@ test('never opens an unrelated site, even if requested by bridge', async () => {
   const {worker, calls} = harness();
   worker.enable();
   for (const url of ['https://evil.com', 'https://newegg.ca.evil.com', 'http://newegg.ca', 'https://user@newegg.ca']) {
-    await assert.rejects(worker.collect({id: 'job', url}), /non-Newegg/);
+    await assert.rejects(worker.collect({id: 'job', url}), /unsupported bridge URL/);
   }
   assert.equal(calls.create.length, 0);
 });
@@ -121,7 +121,7 @@ test('poll reports collection errors and disconnects if bridge is unreachable', 
   worker.enable();
   state.job = {id: 'job1', url: 'https://evil.com'};
   await worker.poll();
-  assert.match(JSON.parse(calls.api.at(-1).options.body).error, /non-Newegg/);
+  assert.match(JSON.parse(calls.api.at(-1).options.body).error, /unsupported bridge URL/);
   state.apiError = 'NetworkError';
   await worker.poll();
   assert.equal(worker.state().enabled, false);
@@ -135,4 +135,58 @@ test('disconnect prevents navigation and collection', async () => {
   await worker.poll();
   assert.equal(calls.api.length, 0);
   assert.equal(worker.state().enabled, false);
+});
+
+
+for (const host of ['bestbuy.ca', 'memoryexpress.com']) {
+  test(`collects ${host} in the owned tab without confirmation`, async () => {
+    const {worker, state, calls} = harness();
+    worker.enable();
+    state.url = `https://www.${host}/product`;
+    const result = await worker.collect({id: 'job', url: state.url});
+    assert.equal(result.url, state.url);
+    assert.equal(calls.read.length, 3);
+    assert.equal(calls.create.length, 1);
+  });
+}
+
+function readPage(host, nodes = {}, jsonLD = null) {
+  const context = vm.createContext({
+    URL, setInterval: () => {},
+    browser: {runtime: {onMessage: {addListener: () => {}}}},
+    location: {hostname: host, href: `https://${host}/product`},
+    document: {
+      querySelector: () => jsonLD === null ? null : {textContent: jsonLD},
+      querySelectorAll: selector => nodes[selector] || [],
+      documentElement: {outerHTML: '<main>product</main>'}
+    },
+    getComputedStyle: node => ({visibility: node.hidden ? 'hidden' : 'visible'})
+  });
+  vm.runInContext(source, context);
+  return vm.runInContext('readProductPage()', context);
+}
+const priceNode = (text, hidden = false) => ({textContent: text, hidden, getClientRects: () => [1]});
+
+test('Best Buy waits for main price and ignores generic recommendation offers', () => {
+  assert.equal(readPage('www.bestbuy.ca', {'[itemprop="price"]': [priceNode('$1')]}).price, '');
+  const selector = "[data-automation='product-price']:not([itemprop='offers'])";
+  assert.equal(readPage('www.bestbuy.ca', {[selector]: [priceNode('$899.99')]}).price, '$899.99');
+  assert.equal(readPage('bestbuy.ca', {[selector]: [priceNode('$899.99', true)]}).html, '');
+  assert.equal(readPage('bestbuy.ca', {}, '{"offers":{"price":"999.99"}}').price, '999.99');
+  assert.equal(readPage('bestbuy.ca', {}, 'not ready').price, '');
+});
+
+test('Memory Express waits for visible main pricing, never generic cards', () => {
+  assert.equal(readPage('memoryexpress.com', {'.product-price': [priceNode('$1')]}).html, '');
+  for (const selector of ['.c-capr-pricing__now', '.c-capr-pricing__grand-total']) {
+    assert.equal(readPage('www.memoryexpress.com', {[selector]: [priceNode('$899.99')]}).price, '$899.99');
+    assert.equal(readPage('www.memoryexpress.com', {[selector]: [priceNode('$899.99', true)]}).html, '');
+  }
+});
+
+test('manifest grants exactly the worker retailer hosts and loopback', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../extensions/firefox/manifest.json')));
+  const hosts = manifest.permissions.filter(permission => permission.startsWith('https:'));
+  assert.deepEqual(hosts.sort(), ['newegg.ca', 'bestbuy.ca', 'memoryexpress.com']
+    .flatMap(host => [`https://${host}/*`, `https://www.${host}/*`]).sort());
 });

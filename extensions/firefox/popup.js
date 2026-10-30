@@ -1,4 +1,4 @@
-/* Manual import remains available alongside the background Newegg worker. */
+/* Manual import remains available alongside the background retailer worker. */
 const tokenInput = document.querySelector("#token");
 const button = document.querySelector("#import");
 const status = document.querySelector("#status");

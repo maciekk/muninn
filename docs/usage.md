@@ -194,9 +194,10 @@ contains cookies: keep `.muninn/` private and ignored by Git.
 Switch back to `fetcher: http` (or remove the field) to disable browser fetching.
 Changing fetchers does not bypass the normal refresh delay. A failed interactive or browser-interactive attempt instead uses its `retry_after` delay (one hour by default).
 
-### Automatically collect Newegg prices in your existing Firefox
+### Automatically collect retailer prices in your existing Firefox
 
-Use `fetcher: bridge` for Newegg Canada to let `muninn check` request rendered
+Use `fetcher: bridge` for Newegg Canada, Best Buy Canada, or Memory Express
+to let `muninn check` request rendered
 pages from your everyday Firefox session. No Playwright install is needed:
 
 ```yaml
@@ -229,19 +230,24 @@ pages from your everyday Firefox session. No Playwright install is needed:
 The report fetches due `bridge` URLs one at a time, using normal cache freshness,
 retry windows and vendor spacing. The extension creates one **dedicated tab**,
 then reuses it; it never navigates your other tabs. The first page opens visibly.
-If Newegg requests verification, complete it in that tab: the extension waits up
+If a retailer requests verification, complete it in that tab: the extension waits up
 to 150 seconds for a stable, visible main-product price. It does not solve or bypass
 verification. Leave the worker's tab on the requested product/variant while a
 check is running. Closing it mid-fetch fails that request; the next request can
 create a new dedicated tab.
 
 Only configured `bridge` URLs in the bridge's selected tracks may be requested.
-Automatic collection currently supports HTTPS `newegg.ca` / `www.newegg.ca`
-only. The final tab URL must match the configured URL exactly (apart from its
+Automatic collection supports HTTPS `newegg.ca`, `bestbuy.ca`, and
+`memoryexpress.com` (with or without `www.`), using the standard HTTPS port. The final tab URL must match the configured URL exactly (apart from its
 fragment); redirects to a different variant or changed query parameters are
 rejected. The main product price is used, never a recommendation/comparison or
 other seller's price. The worker currently waits for the built-in main-price
-markup even if you configure a custom `price_selector` for extraction.
+markup (or Best Buy’s product-specific JSON-LD) even if you configure a custom
+`price_selector` for extraction. Best Buy and Memory Express entries in the
+monitor track use the bridge; Amazon retains automated browser fetching.
+After updating from a Newegg-only extension, reload the add-on to grant the
+new retailer permissions, then reconnect. Connected checks need no terminal
+confirmation for these retailers unless the bridge becomes unavailable.
 
 If the bridge server is unavailable or the Firefox worker is disconnected,
 interactive checks pause once per run with instructions to start the bridge and
@@ -269,7 +275,8 @@ currency before importing. Imports are timestamped at import time.
 
 The bridge listens only on `127.0.0.1:8765`, requires a random pairing token,
 accepts at most 10 MiB per page, and does not enable CORS for websites. The
-extension has persistent access only to Newegg Canada and loopback, plus
+extension has persistent access only to Newegg Canada, Best Buy Canada,
+Memory Express, and loopback, plus
 `activeTab` for one-off imports on other configured retailers. Automatic polling
 starts only when you click **Connect** and continues with the popup closed.
 

@@ -26,9 +26,20 @@ class WorkerUnavailable(ValueError):
     """No Firefox worker is polling the bridge."""
 
 
-def is_newegg(url: str) -> bool:
-    parsed = urlparse(url)
-    return parsed.scheme == 'https' and parsed.hostname in {'newegg.ca', 'www.newegg.ca'} and not parsed.username and parsed.port in {None, 443}
+BRIDGE_HOSTS = frozenset(
+    host for vendor in ("newegg.ca", "bestbuy.ca", "memoryexpress.com")
+    for host in (vendor, f"www.{vendor}")
+)
+
+
+def is_bridge_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        return (parsed.scheme == "https" and parsed.hostname in BRIDGE_HOSTS
+                and parsed.username is None and parsed.password is None
+                and parsed.port in {None, 443})
+    except ValueError:
+        return False
 
 
 class Jobs:
@@ -39,8 +50,8 @@ class Jobs:
         self.last_poll = 0.0
 
     def fetch(self, url, timeout=FETCH_TIMEOUT):
-        if url not in self.allowed or not is_newegg(url):
-            raise ValueError('URL is not an allowed Newegg URL in the bridge tracks')
+        if url not in self.allowed or not is_bridge_url(url):
+            raise ValueError('URL is not an allowed bridge URL in the bridge tracks')
         with self.lock:
             if time.monotonic() - self.last_poll > 10:
                 raise WorkerUnavailable('Firefox worker is not connected; click Connect in the extension')

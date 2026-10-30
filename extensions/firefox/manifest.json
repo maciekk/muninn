@@ -1,15 +1,31 @@
 {
   "manifest_version": 2,
   "name": "Muninn tab importer",
-  "version": "0.2.0",
-  "description": "Collect configured Newegg prices in your existing Firefox session, or import the current tab.",
-  "permissions": ["activeTab", "storage", "http://127.0.0.1/*", "https://www.newegg.ca/*", "https://newegg.ca/*"],
-  "background": {"scripts": ["background.js"]},
+  "version": "0.3.0",
+  "description": "Collect configured Newegg, Best Buy Canada, and Memory Express prices in Firefox, or import the current tab.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "http://127.0.0.1/*",
+    "https://www.newegg.ca/*",
+    "https://newegg.ca/*",
+    "https://bestbuy.ca/*",
+    "https://www.bestbuy.ca/*",
+    "https://memoryexpress.com/*",
+    "https://www.memoryexpress.com/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
   "browser_action": {
     "default_title": "Import product into Muninn",
     "default_popup": "popup.html"
   },
   "browser_specific_settings": {
-    "gecko": {"id": "tab-import@muninn.local"}
+    "gecko": {
+      "id": "tab-import@muninn.local"
+    }
   }
 }

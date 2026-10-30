@@ -26,12 +26,52 @@ async function api(path, pairingToken, payload) {
 
 function allowedURL(url) {
   const parsed = new URL(url);
-  return parsed.protocol === "https:" && ["newegg.ca", "www.newegg.ca"].includes(parsed.hostname) &&
+  return parsed.protocol === "https:" && ["newegg.ca", "www.newegg.ca", "bestbuy.ca", "www.bestbuy.ca",
+    "memoryexpress.com", "www.memoryexpress.com"].includes(parsed.hostname) &&
     !parsed.username && !parsed.password && (!parsed.port || parsed.port === "443");
 }
 
+// Self-contained: serialized into the owned tab, never run in another tab.
+function readProductPage() {
+  const host = location.hostname.replace(/^www\./, "");
+  const selectors = {
+    "newegg.ca": [".product-price--x .price-current_2026", ".product-price .price-current_2026",
+      ".product-price--x .price-current", ".product-price .price-current"],
+    "bestbuy.ca": ["[data-automation='product-price']:not([itemprop='offers'])"],
+    "memoryexpress.com": [".c-capr-pricing__now", ".c-capr-pricing__grand-total"]
+  }[host] || [];
+  let price = "";
+  // Match the extractor's product-only JSON-LD preference, not recommendation offers.
+  if (host === "bestbuy.ca") {
+    const script = document.querySelector("script#product-json-ld[type='application/ld+json']");
+    try {
+      const data = JSON.parse(script?.textContent || "null");
+      const stack = Array.isArray(data) ? [...data] : [data];
+      while (stack.length) {
+        const item = stack.pop();
+        if (!item || typeof item !== "object") continue;
+        if (item.offers && !Array.isArray(item.offers) && item.offers.price !== undefined &&
+            /[0-9]/.test(String(item.offers.price))) {
+          price = String(item.offers.price);
+          break;
+        }
+        stack.push(...Object.values(item));
+      }
+    } catch (_) { /* Wait for visible main-price markup if JSON-LD is not ready. */ }
+  }
+  for (const selector of selectors) {
+    if (price) break;
+    for (const node of document.querySelectorAll(selector)) {
+      if (node.getClientRects().length && getComputedStyle(node).visibility !== "hidden" && /[0-9]/.test(node.textContent)) {
+        price = node.textContent.trim(); break;
+      }
+    }
+  }
+  return {url: location.href, price, html: price ? document.documentElement.outerHTML : ""};
+}
+
 async function collect(job) {
-  if (!allowedURL(job.url)) throw new Error("Refusing a non-Newegg URL");
+  if (!allowedURL(job.url)) throw new Error("Refusing an unsupported bridge URL");
   if (workerTab !== null) {
     try { await browser.tabs.get(workerTab); }
     catch (_) { workerTab = null; }
@@ -43,7 +83,7 @@ async function collect(job) {
     if (tab.url === job.url) await browser.tabs.reload(workerTab);
     else await browser.tabs.update(workerTab, {url: job.url});
   }
-  status = "Loading Newegg; complete any verification in the dedicated Muninn tab.";
+  status = "Loading product; complete any verification in the dedicated Muninn tab.";
   // Give navigation time to start, then wait for a stable, visible main price.
   await sleep(2000);
   const deadline = Date.now() + 150000;
@@ -55,20 +95,7 @@ async function collect(job) {
     if (tab.status === "complete") {
       let page;
       try {
-        [page] = await browser.tabs.executeScript(workerTab, {code: `(() => {
-          const selectors = [".product-price--x .price-current_2026", ".product-price .price-current_2026",
-            ".product-price--x .price-current", ".product-price .price-current"];
-          let price = "";
-          for (const selector of selectors) {
-            for (const node of document.querySelectorAll(selector)) {
-              if (node.getClientRects().length && getComputedStyle(node).visibility !== "hidden" && /[0-9]/.test(node.textContent)) {
-                price = node.textContent.trim(); break;
-              }
-            }
-            if (price) break;
-          }
-          return {url: location.href, price, html: price ? document.documentElement.outerHTML : ""};
-        })()`});
+        [page] = await browser.tabs.executeScript(workerTab, {code: `(${readProductPage.toString()})()`});
       } catch (_) {
         // Verification may temporarily navigate to a page we cannot read.
       }

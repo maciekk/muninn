@@ -115,9 +115,9 @@ def load(path: Path) -> tuple[Product, ...]:
             if fetcher not in ("http", "browser", "interactive", "browser_interactive", "manual", "bridge"):
                 raise ValueError("fetcher must be http, browser, interactive, browser_interactive, manual, or bridge")
             if fetcher == "bridge":
-                from .browser_bridge import is_newegg
-                if not is_newegg(raw["url"]):
-                    raise ValueError("bridge fetching currently supports only HTTPS newegg.ca URLs")
+                from .browser_bridge import is_bridge_url
+                if not is_bridge_url(raw["url"]):
+                    raise ValueError("bridge fetching supports only HTTPS newegg.ca, bestbuy.ca, or memoryexpress.com URLs")
             browser_engine = raw.get("browser_engine", "chromium")
             if browser_engine not in ("chromium", "firefox"):
                 raise ValueError("browser_engine must be chromium or firefox")

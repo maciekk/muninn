@@ -98,10 +98,10 @@ def test_bridge_command_loads_selected_tracks(tmp_path, monkeypatch):
     assert importer(url, '<div class="product-price"><span class="price-current">$709.00</span></div>') == Decimal('709.00')
 
 
-@pytest.fixture
-def worker_bridge(tmp_path):
+@pytest.fixture(params=["newegg.ca", "bestbuy.ca", "memoryexpress.com"])
+def worker_bridge(tmp_path, request):
     import json
-    url = 'https://www.newegg.ca/p/example'
+    url = f'https://www.{request.param}/p/example'
     server = make_server(Mock(), 'worker-token', port=0, allowed_urls={url})
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -392,5 +392,55 @@ def test_report_shares_prompt_across_tracks_but_not_runs(tmp_path, monkeypatch, 
     try:
         assert store.cache_html(url) == html
         assert len(store.successful(url)) == 1
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('host', ['newegg.ca', 'bestbuy.ca', 'memoryexpress.com'])
+@pytest.mark.parametrize('prefix', ['', 'www.'])
+def test_bridge_config_accepts_supported_retailers(tmp_path, host, prefix):
+    from muninn.config import load
+    path = tmp_path / 'product.yaml'
+    url = f'https://{prefix}{host}/product'
+    path.write_text(f'name: Product\nretailers:\n- name: Store\n  url: {url}\n  fetcher: bridge\n')
+    assert load(path)[0].retailers[0].fetcher == 'bridge'
+
+
+@pytest.mark.parametrize('url', [
+    'https://bestbuy.ca.evil.com/product', 'http://bestbuy.ca/product',
+    'https://memoryexpress.com:999/product', 'https://user@bestbuy.ca/product',
+    'https://:password@memoryexpress.com/product', 'https://bestbuy.ca:invalid/product',
+])
+def test_bridge_jobs_reject_unsafe_urls_even_when_allowlisted(url):
+    from muninn.browser_bridge import Jobs
+    jobs = Jobs({url})
+    jobs.next()
+    with pytest.raises(ValueError, match='not an allowed bridge URL'):
+        jobs.fetch(url, timeout=.01)
+
+
+@pytest.mark.parametrize(('host', 'html'), [
+    ('bestbuy.ca', '<script id="product-json-ld" type="application/ld+json">'
+     '{"offers":{"price":"899.99"}}</script>'),
+    ('memoryexpress.com', '<div class="c-capr-pricing__now">$899.99</div>'),
+])
+def test_new_bridge_retailers_refresh_without_browser_or_terminal(tmp_path, monkeypatch, host, html):
+    from datetime import datetime, timezone
+    from muninn.cli import refresh_if_needed
+    url = f'https://www.{host}/product'
+    retailer = Retailer('Store', url, 7200, fetcher='bridge')
+    fetch = Mock(return_value=html)
+    prompt = Mock(side_effect=AssertionError('must not prompt'))
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', fetch)
+    monkeypatch.setattr('builtins.input', prompt)
+    store = Store(tmp_path)
+    session = Mock()
+    try:
+        result = refresh_if_needed(store, Product('Product', None, (retailer,)), retailer,
+                                   session, datetime.now(timezone.utc), vendor_delay=0)
+        assert result.current.price == Decimal('899.99')
+        assert store.cache_html(url) == html
+        session.get.assert_not_called()
+        prompt.assert_not_called()
     finally:
         store.close()

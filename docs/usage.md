@@ -312,6 +312,8 @@ Both tables include a narrow **Age** column beside **Now**, showing how long ago
 the displayed price was fetched—not the latest failed attempt. Missing prices
 show `—`. Ages round down without decimals and retain the finer unit until two
 of the larger unit: `75s`, `2m`, `75m`, `2h`, `25h`, `2d`.
+With colour enabled, ages under 2 hours are dim, 2–24 hours are normal,
+24–48 hours are yellow, and 48 hours or more are bold yellow.
 
 - `●`: current price; `T`: target.
 - `├─┤`: observed low-to-high interval; `·`: outside that interval to include a target.

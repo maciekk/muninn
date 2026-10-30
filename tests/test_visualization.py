@@ -290,3 +290,39 @@ def test_tables_include_aligned_age_of_displayed_price(monkeypatch, capsys, widt
         unlisted = next(line for line in lines if 'Unlisted' in line)
         assert unlisted[age_start:age_start + 4] == '   —'
         assert 'NO LINKS' in unlisted
+
+
+@pytest.mark.parametrize('age,codes', [
+    ('0s', '2'), ('119s', '2'), ('2m', '2'), ('119m', '2'),
+    ('2h', None), ('23h', None), ('24h', '33'), ('47h', '33'),
+    ('2d', '33;1'), ('999d', '33;1'), ('100…', '33;1'), ('—', None),
+])
+@pytest.mark.parametrize('background', [None, '48;5;240'])
+def test_age_cell_emphasis(monkeypatch, age, codes, background):
+    from muninn import cli
+    monkeypatch.setattr(cli, '_COLOR', True)
+    value = age.rjust(4)
+    all_codes = ';'.join(code for code in (background, codes) if code)
+    expected = f'\033[{all_codes}m{value}\033[0m' if all_codes else value
+    assert cli.style_cell(value, 'Age', background) == expected
+    monkeypatch.setattr(cli, '_COLOR', False)
+    assert cli.style_cell(value, 'Age', background) == value
+
+
+@pytest.mark.parametrize('overview', [False, True])
+@pytest.mark.parametrize('hours,codes', [(1, '2'), (2, None), (24, '33'), (48, '33;1')])
+def test_tables_style_age(monkeypatch, capsys, overview, hours, codes):
+    from muninn import cli
+    at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(cli, 'now', lambda: at)
+    monkeypatch.setattr(cli, '_COLOR', True)
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    product = Product('Drive', None, (retailer,))
+    item = Checked(retailer, [Observation(at - timedelta(hours=hours), Decimal('10'), True, None)], False, None)
+    if overview:
+        cli.track_overview('nvme', [(product, [item])])
+    else:
+        cli.product_report('nvme', product, [item])
+    age = cli.data_age(item, at).rjust(4)
+    expected = f'\033[{codes}m{age}\033[0m' if codes else age
+    assert expected in capsys.readouterr().out

@@ -299,6 +299,17 @@ def style_cell(value: str, column: str, background: str | None = None) -> str:
         styles = ("yellow", "bold")
     elif column == "Now" and value.strip() != "—":
         styles = ("blue", "bold")
+    elif column == "Age" and value.strip() != "—":
+        age = value.strip()
+        if age.endswith(("d", "…")):
+            # Day values start at 2d; overflowing day counts are older still.
+            styles = ("yellow", "bold")
+        elif age.endswith("h"):
+            if int(age[:-1]) >= 24:
+                styles = ("yellow",)
+        else:
+            # Seconds and minutes are only used below two hours.
+            styles = ("dim",)
     return paint(value, *styles, background=background)
 
 

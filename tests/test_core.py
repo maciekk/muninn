@@ -206,7 +206,7 @@ def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, cap
     monkeypatch.setattr(
         cli,
         "refresh_if_needed",
-        lambda store, product, retailer, session, current_time, vendor_delay, track_name, force: cli.Checked(
+        lambda store, product, retailer, session, current_time, vendor_delay, track_name, force, bridge_recovery: cli.Checked(
             retailer, [], False, warning
         ),
     )
@@ -236,7 +236,7 @@ def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(
             cli,
             "refresh_if_needed",
-            lambda store, product, retailer, session, current_time, vendor_delay, track_name, force: cli.Checked(
+            lambda store, product, retailer, session, current_time, vendor_delay, track_name, force, bridge_recovery: cli.Checked(
                 retailer, [], False, warning
             ),
         )

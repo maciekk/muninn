@@ -110,6 +110,32 @@ def clear_progress() -> None:
         _progress_active = False
 
 
+@dataclass
+class BridgeRecovery:
+    """Offer at most one interactive bridge recovery per check run."""
+    prompted: bool = False
+
+    def fetch_html(self, url: str, state_dir: Path) -> str:
+        try:
+            return browser_bridge.fetch_html(url, state_dir)
+        except browser_bridge.BridgeUnavailable:
+            if self.prompted or not (sys.stdin.isatty() and sys.stderr.isatty()):
+                raise
+            self.prompted = True
+            clear_progress()
+            print("[muninn] Bridge unavailable. Run `muninn browser-bridge` in another terminal\n"
+                  "and connect the Firefox extension.\n"
+                  "Press Enter to retry, or type ‘skip’ to continue without it: ",
+                  file=sys.stderr, end="", flush=True)
+            try:
+                answer = input().strip().lower()
+            except EOFError:
+                answer = "skip"
+            if answer:
+                raise
+        return browser_bridge.fetch_html(url, state_dir)
+
+
 def report_width() -> int:
     # 100 remains a usable fallback for redirected output and narrow terminals.
     return max(100, shutil.get_terminal_size(fallback=(100, 24)).columns)
@@ -126,7 +152,7 @@ def format_retailer_warning(kind: str, product: Product, retailer: Retailer, pro
     return format_warning(kind, f"{detail}; {problem}" if problem else detail)
 
 
-def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "", force: bool = False) -> Checked:
+def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "", force: bool = False, bridge_recovery: BridgeRecovery | None = None) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
     due = force or attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
@@ -146,7 +172,7 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
         status("Fetching", "…")
         try:
             if retailer.fetcher == "bridge":
-                html = browser_bridge.fetch_html(retailer.url, store.root)
+                html = (bridge_recovery or BridgeRecovery()).fetch_html(retailer.url, store.root)
                 browser.check_page(html)
                 if extract_price(html, retailer.url, retailer.price_selector) is None:
                     raise browser.FetchError("Firefox page has no main-product price; keeping prior data")
@@ -378,6 +404,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
     session = requests.Session()
     warnings: dict[str, list[tuple[str, str | None]]] = {}
     collected = []
+    bridge_recovery = BridgeRecovery()
 
     def render(long: bool) -> None:
         for track_name, results, track_bound in collected:
@@ -402,7 +429,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)
-            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay, track_name=track_name, force=force) for retailer in product.retailers]) for product in products]
+            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay, track_name=track_name, force=force, bridge_recovery=bridge_recovery) for retailer in product.retailers]) for product in products]
             collected.append((track_name, results, track_bound))
             for product, checked in results:
                 if not product.retailers:

@@ -180,7 +180,13 @@ rejected. The main product price is used, never a recommendation/comparison or
 other seller's price. The worker currently waits for the built-in main-price
 markup even if you configure a custom `price_selector` for extraction.
 
-If the worker is disconnected, verification times out, or no main price is found,
+If the bridge server is unavailable or the Firefox worker is disconnected,
+interactive checks pause once per run with instructions to start the bridge and
+connect the extension. Press **Enter** to retry, or type **skip** to continue.
+If skipped or the retry fails, remaining bridge requests fail normally without
+another prompt. Non-interactive checks never pause.
+
+If a request still fails, verification times out, or no main price is found,
 the check reports `FETCH_FAILED` and keeps previous data. To retry immediately,
 use `muninn check --force` (optionally with a track name), or reset Newegg again. After restarting the bridge, paste its **new token** and
 reconnect; after reloading the extension, reconnect too. Click **Disconnect** in

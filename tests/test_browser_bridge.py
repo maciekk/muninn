@@ -284,3 +284,113 @@ def test_serve_private_credentials_and_cleanup(tmp_path, monkeypatch):
     assert seen
     assert not (tmp_path / 'bridge.json').exists()
     assert not list(tmp_path.glob('*.tmp'))
+
+
+def test_missing_server_is_distinct_unavailability(tmp_path):
+    from muninn.browser_bridge import BridgeUnavailable, fetch_html
+    with pytest.raises(BridgeUnavailable):
+        fetch_html('https://www.newegg.ca/p/example', tmp_path)
+
+
+def test_missing_worker_is_distinct_unavailability(worker_bridge):
+    from muninn.browser_bridge import BridgeUnavailable, fetch_html
+    _, state_dir, url = worker_bridge
+    with pytest.raises(BridgeUnavailable, match='not connected'):
+        fetch_html(url, state_dir)
+
+
+@pytest.mark.parametrize('answer', ['skip', '', EOFError()])
+def test_bridge_prompt_once_after_skip_or_failed_retry(tmp_path, monkeypatch, capsys, answer):
+    from muninn.cli import BridgeRecovery
+    from muninn.browser_bridge import BridgeUnavailable
+    fetch = Mock(side_effect=BridgeUnavailable('offline'))
+    prompt = Mock(side_effect=answer) if isinstance(answer, Exception) else Mock(return_value=answer)
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', fetch)
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)
+    monkeypatch.setattr('sys.stderr.isatty', lambda: True)
+    monkeypatch.setattr('builtins.input', prompt)
+    recovery = BridgeRecovery()
+    for _ in range(3):
+        with pytest.raises(BridgeUnavailable):
+            recovery.fetch_html('url', tmp_path)
+    prompt.assert_called_once_with()
+    assert fetch.call_count == (4 if answer == '' else 3)
+    output = capsys.readouterr()
+    assert output.err.count('Press Enter to retry') == 1
+    assert 'muninn browser-bridge' in output.err
+    assert not output.out
+
+
+def test_bridge_prompt_retry_can_recover(tmp_path, monkeypatch):
+    from muninn.cli import BridgeRecovery
+    from muninn.browser_bridge import BridgeUnavailable
+    fetch = Mock(side_effect=[BridgeUnavailable('offline'), 'page', 'next page', BridgeUnavailable('offline again')])
+    prompt = Mock(return_value='')
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', fetch)
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)
+    monkeypatch.setattr('sys.stderr.isatty', lambda: True)
+    monkeypatch.setattr('builtins.input', prompt)
+    recovery = BridgeRecovery()
+    assert recovery.fetch_html('url', tmp_path) == 'page'
+    assert recovery.fetch_html('url2', tmp_path) == 'next page'
+    with pytest.raises(BridgeUnavailable):
+        recovery.fetch_html('url3', tmp_path)
+    prompt.assert_called_once_with()
+
+
+@pytest.mark.parametrize('stdin_tty,stderr_tty', [(False, True), (True, False), (False, False)])
+def test_bridge_never_prompts_noninteractive(tmp_path, monkeypatch, stdin_tty, stderr_tty):
+    from muninn.cli import BridgeRecovery
+    from muninn.browser_bridge import BridgeUnavailable
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', Mock(side_effect=BridgeUnavailable('offline')))
+    monkeypatch.setattr('sys.stdin.isatty', lambda: stdin_tty)
+    monkeypatch.setattr('sys.stderr.isatty', lambda: stderr_tty)
+    prompt = Mock()
+    monkeypatch.setattr('builtins.input', prompt)
+    with pytest.raises(BridgeUnavailable):
+        BridgeRecovery().fetch_html('url', tmp_path)
+    prompt.assert_not_called()
+
+
+def test_ordinary_bridge_fetch_error_does_not_prompt(tmp_path, monkeypatch):
+    from muninn.cli import BridgeRecovery
+    from muninn.browser import FetchError
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', Mock(side_effect=FetchError('verification failed')))
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)
+    monkeypatch.setattr('sys.stderr.isatty', lambda: True)
+    prompt = Mock()
+    monkeypatch.setattr('builtins.input', prompt)
+    with pytest.raises(FetchError):
+        BridgeRecovery().fetch_html('url', tmp_path)
+    prompt.assert_not_called()
+
+
+def test_report_shares_prompt_across_tracks_but_not_runs(tmp_path, monkeypatch, capsys):
+    from muninn.cli import report
+    from muninn.browser_bridge import BridgeUnavailable
+    from datetime import datetime, timezone
+    url = 'https://www.newegg.ca/p/example'
+    retailer = Retailer('Newegg', url, 7200, fetcher='bridge')
+    product = Product('Drive', None, (retailer,))
+    tracks = [('nvme', [product]), ('monitor', [product])]
+    store = Store(tmp_path)
+    html = '<div class="product-price"><span class="price-current">$709.00</span></div>'
+    at = datetime.now(timezone.utc)
+    path, _ = store.write_html(url, html, at)
+    store.record_success(url, product.name, retailer.name, Decimal('709'), path, at)
+    store.close()
+    monkeypatch.setattr('muninn.browser_bridge.fetch_html', Mock(side_effect=BridgeUnavailable('offline')))
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)
+    monkeypatch.setattr('sys.stderr.isatty', lambda: True)
+    prompt = Mock(return_value='skip')
+    monkeypatch.setattr('builtins.input', prompt)
+    for _ in range(2):
+        report(tracks, tmp_path, force=True, vendor_delay=0)
+    assert prompt.call_count == 2
+    assert capsys.readouterr().err.count('Press Enter to retry') == 2
+    store = Store(tmp_path)
+    try:
+        assert store.cache_html(url) == html
+        assert len(store.successful(url)) == 1
+    finally:
+        store.close()

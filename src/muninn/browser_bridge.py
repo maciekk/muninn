@@ -18,6 +18,14 @@ PORT = 8765
 FETCH_TIMEOUT = 180
 
 
+class BridgeUnavailable(FetchError):
+    """The bridge server or its Firefox worker is not ready."""
+
+
+class WorkerUnavailable(ValueError):
+    """No Firefox worker is polling the bridge."""
+
+
 def is_newegg(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme == 'https' and parsed.hostname in {'newegg.ca', 'www.newegg.ca'} and not parsed.username and parsed.port in {None, 443}
@@ -35,7 +43,7 @@ class Jobs:
             raise ValueError('URL is not an allowed Newegg URL in the bridge tracks')
         with self.lock:
             if time.monotonic() - self.last_poll > 10:
-                raise ValueError('Firefox worker is not connected; click Connect in the extension')
+                raise WorkerUnavailable('Firefox worker is not connected; click Connect in the extension')
             if self.job is not None:
                 raise ValueError('Firefox bridge is busy with another check')
             job = {'id': secrets.token_urlsafe(24), 'url': url, 'sent': False,
@@ -144,7 +152,7 @@ def make_server(import_page, token: str, port: int = PORT, allowed_urls=()) -> T
                         raise ValueError('expected URL and HTML strings')
                     result = {'price': str(import_page(data['url'], data['html']))}
             except (ValueError, OSError) as exc:
-                self.reply(400, {'error': str(exc)})
+                self.reply(400, {'error': str(exc), **({'kind': 'unavailable'} if isinstance(exc, WorkerUnavailable) else {})})
                 return
             self.reply(200, result)
 
@@ -167,12 +175,16 @@ def fetch_html(url: str, state_dir: Path) -> str:
                                  headers={'Authorization': f'Bearer {token}'}, timeout=(3, FETCH_TIMEOUT + 15))
         data = response.json()
         if not response.ok:
+            if data.get('kind') == 'unavailable' or response.status_code == 403:
+                raise BridgeUnavailable(data.get('error', 'Firefox bridge unavailable'))
             raise FetchError(data.get('error', 'Firefox bridge request failed'))
         if not isinstance(data.get('html'), str):
             raise ValueError('invalid HTML response')
         return data['html']
+    except requests.Timeout as exc:
+        raise FetchError(f'Firefox bridge request timed out ({exc})') from exc
     except (OSError, ValueError, KeyError, requests.RequestException) as exc:
-        raise FetchError(f'Firefox bridge unavailable; run muninn browser-bridge and connect the extension ({exc})') from exc
+        raise BridgeUnavailable(f'Firefox bridge unavailable; run muninn browser-bridge and connect the extension ({exc})') from exc
 
 
 def serve(import_page, state_dir: Path, allowed_urls) -> None:

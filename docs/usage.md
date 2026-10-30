@@ -259,7 +259,11 @@ contain account information. If HTML-only saves omit the price, try Firefox's
 
 ### Manually refresh selected URLs
 
-Use `reset` to make configured URLs eligible for their next check immediately. It preserves observations and cached pages; it only moves the latest attempt timestamp into the past.
+Use `reset` to make configured URLs eligible for their next check immediately.
+It preserves observations, their timestamps, and cached pages. A persistent
+per-URL due marker is cleared by the next completed fetch attempt (success or
+failure) or HTML import; normal freshness/retry scheduling then resumes. URLs
+without any attempt are already due.
 
 ```sh
 muninn reset nvme                    # all configured retailers in the nvme track

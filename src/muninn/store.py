@@ -16,6 +16,11 @@ class Observation:
     success: bool
     error: str | None
 
+    @property
+    def timestamp_known(self) -> bool:
+        # Older reset commands replaced an observation's time with this sentinel.
+        return self.fetched_at != datetime(1970, 1, 1, tzinfo=timezone.utc)
+
 
 class Store:
     def __init__(self, project_dir: Path):
@@ -37,6 +42,7 @@ class Store:
         self.db.execute("""CREATE TABLE IF NOT EXISTS vendor_fetches (
             vendor TEXT PRIMARY KEY, last_started_at REAL NOT NULL)
         """)
+        self.db.execute("CREATE TABLE IF NOT EXISTS refresh_due (url TEXT PRIMARY KEY)")
         self.db.commit()
 
     def close(self) -> None:
@@ -81,22 +87,24 @@ class Store:
         self._record(url, product, retailer, None, False, error, None, at)
 
     def mark_due(self, url: str) -> bool:
-        """Make a URL's latest attempt immediately eligible for refresh.
-
-        History is retained; only the timestamp used for freshness is moved into
-        the past. URLs with no attempt are already due.
-        """
+        """Schedule a check without modifying observations or their timestamps."""
         cursor = self.db.execute(
-            "UPDATE observations SET fetched_at=? WHERE id=("
-            "SELECT id FROM observations WHERE url=? ORDER BY id DESC LIMIT 1)",
-            (datetime(1970, 1, 1, tzinfo=timezone.utc).isoformat(), url),
+            "INSERT OR IGNORE INTO refresh_due(url) SELECT ? "
+            "WHERE EXISTS (SELECT 1 FROM observations WHERE url=?)",
+            (url, url),
         )
         self.db.commit()
-        return cursor.rowcount == 1
+        return cursor.rowcount == 1 or self.is_marked_due(url)
+
+    def is_marked_due(self, url: str) -> bool:
+        return self.db.execute("SELECT 1 FROM refresh_due WHERE url=?", (url,)).fetchone() is not None
 
     def _record(self, url: str, product: str, retailer: str, price: Decimal | None, success: bool, error: str | None, cache_path: str | None, at: datetime) -> None:
         self.db.execute("INSERT INTO observations(url,product,retailer,fetched_at,price,success,error,cache_path) VALUES(?,?,?,?,?,?,?,?)",
             (url, product, retailer, at.astimezone(timezone.utc).isoformat(), str(price) if price is not None else None, int(success), error, cache_path))
+        # A completed attempt (including failure or import) consumes the reset.
+        # Keep this in the observation transaction so a failed write cannot lose it.
+        self.db.execute("DELETE FROM refresh_due WHERE url=?", (url,))
         self.db.commit()
 
     def _observation(self, row: sqlite3.Row) -> Observation:

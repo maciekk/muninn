@@ -155,7 +155,7 @@ def format_retailer_warning(kind: str, product: Product, retailer: Retailer, pro
 def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "", force: bool = False, bridge_recovery: BridgeRecovery | None = None) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
-    due = force or attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
+    due = force or store.is_marked_due(retailer.url) or attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
 
     def status(action: str, detail: str = "") -> None:
@@ -633,7 +633,7 @@ def main(argv: list[str] | None = None) -> None:
         elif command == "reset":
             marked, already_due = reset_refreshes(tracks, args.tracks_dir.resolve().parent, args.vendor)
             scope = f" for {args.vendor}" if args.vendor else ""
-            print(f"Reset {marked} retailer refresh timestamp(s){scope}; {already_due} URL(s) had no attempt and were already due.")
+            print(f"Marked {marked} retailer URL(s) due for refresh{scope}; {already_due} URL(s) had no attempt and were already due.")
             status = 0
         else:
             try:

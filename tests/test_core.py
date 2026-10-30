@@ -137,7 +137,10 @@ def test_reset_marks_matching_retailers_due(tmp_path: Path):
     assert reset_refreshes([("nvme", [product])], tmp_path, "newegg.ca") == (1, 0)
     store = Store(tmp_path)
     try:
-        assert store.latest_attempt(newegg.url).fetched_at.year == 1970
+        assert store.latest_attempt(newegg.url).fetched_at == at
+        assert store.successful(newegg.url)[0].fetched_at == at
+        assert store.is_marked_due(newegg.url)
+        assert not store.is_marked_due(amazon.url)
         assert store.latest_attempt(amazon.url).fetched_at == at
     finally:
         store.close()
@@ -559,3 +562,53 @@ def test_cli_rejects_force_for_non_check_commands(command, capsys):
         cli.main([command, '--force'])
     assert exc.value.code == 2
     assert '--force is only valid with check' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('fail', [False, True])
+def test_reset_survives_reopen_and_is_consumed_by_next_attempt(tmp_path, fail):
+    from unittest.mock import Mock
+    import requests
+    from muninn.cli import refresh_if_needed
+    from muninn.config import Product, Retailer
+
+    retailer = Retailer('Shop', 'https://example.test/reset', 86400, retry_seconds=3600)
+    product = Product('Drive', None, (retailer,))
+    at = datetime.now(timezone.utc)
+    store = Store(tmp_path)
+    store.record_success(retailer.url, product.name, retailer.name, Decimal(100), '', at)
+    assert not store.mark_due('https://example.test/no-attempt')
+    assert store.mark_due(retailer.url)
+    assert store.mark_due(retailer.url)  # idempotent, still counts as marked
+    store.close()
+    store = Store(tmp_path)
+    session = Mock()
+    if fail:
+        session.get.side_effect = requests.RequestException('offline')
+    else:
+        session.get.return_value.text = '<script type="application/ld+json">{"offers":{"price":"90"}}</script>'
+    try:
+        assert store.is_marked_due(retailer.url)
+        refresh_if_needed(store, product, retailer, session, at + timedelta(seconds=1), vendor_delay=0)
+        session.get.assert_called_once()
+        assert not store.is_marked_due(retailer.url)
+        assert store.successful(retailer.url)[0].fetched_at == at
+        assert at + timedelta(seconds=1) <= store.latest_attempt(retailer.url).fetched_at < at + timedelta(seconds=2)
+        session.get.reset_mock()
+        refresh_if_needed(store, product, retailer, session, at + timedelta(seconds=2), vendor_delay=0)
+        session.get.assert_not_called()  # normal freshness/retry policy resumes
+    finally:
+        store.close()
+
+
+def test_import_consumes_reset_without_changing_historical_timestamp(tmp_path):
+    store = Store(tmp_path)
+    at = datetime.now(timezone.utc)
+    url = 'https://example.test/import'
+    try:
+        store.record_success(url, 'Drive', 'Shop', Decimal(100), '', at)
+        assert store.mark_due(url)
+        store.record_success(url, 'Drive', 'Shop', Decimal(90), '', at + timedelta(minutes=1))
+        assert not store.is_marked_due(url)
+        assert [item.fetched_at for item in store.successful(url)] == [at, at + timedelta(minutes=1)]
+    finally:
+        store.close()

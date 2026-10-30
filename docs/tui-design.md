@@ -1,6 +1,6 @@
 # Possible TUI: evaluation and incremental design
 
-Status: proposal, not implemented. Scope: an optional interactive companion to the CLI, not a replacement.
+Status: phase 1 implemented: optional cache-only Textual viewer (`--tui`). Scope: an optional interactive companion to the CLI, not a replacement. See [usage](usage.md#interactive-cached-results-viewer) for the current behavior. The design discussion below records the original proposal; refresh and editing remain deferred.
 
 ## Assessment
 
@@ -35,10 +35,10 @@ An explicit flag avoids taking over the currently valid track name `tui`. Do not
 
 Start with a **cache-only viewer**, with refreshing still performed by the CLI:
 
-1. Select a track; see a scrollable short-style comparison table.
+1. Show the first track's scrollable short-style comparison table immediately, with a narrow track sidebar for switching (no menu-only startup).
 2. Arrow keys or mouse select a row; Enter/click opens product details.
-3. Details show all retailer rows, notes, rating, target, URLs, cache timestamps, price histories and numeric extremes, plus warnings beside affected retailers.
-4. Focus the retailer corresponding to the selected overview row.
+3. Details show an unframed, printout-style report for only the selected retailer listing, plus the product's notes, rating, target, and source YAML. Preserve full values, cache/latest-attempt timestamps, errors/warnings, collection settings, all-time numeric extremes, and a complete successful-price observation ledger.
+4. Start the report at the top; do not show other retailers or frame listing details as cards. Candidates with no links show product information only.
 5. Escape returns to the table with selection and scroll position preserved; `q` quits.
 6. A reload action rereads the cache after an external CLI check; no polling initially.
 
@@ -73,7 +73,7 @@ Both presenters consume the same data and business decisions, but own their layo
 
 One semantic detail needs an explicit decision: today `NEW LOW!` depends on `Checked.refreshed`, not just history. A cache-only viewer should not claim that it just discovered a new low. Initially retain that distinction (no refresh event means no `NEW LOW!`); a persistent “at historical low” indicator would be a separate, clearly named enhancement.
 
-No schema change is expected. Note that `Store` initialization currently creates directories/schema and can migrate a legacy cache: “cache-only” means no fetching, not a strictly read-only filesystem connection. True read-only operation would require additional work.
+The viewer uses the existing observations; a separate `refresh_due` table now lets CLI reset preserve their timestamps. Note that `Store` initialization currently creates directories/schema and can migrate a legacy cache: “cache-only” means no fetching, not a strictly read-only filesystem connection. True read-only operation would require additional work.
 
 ## Framework recommendation
 
@@ -100,7 +100,7 @@ This is the main complexity boundary. Keep it a separate increment:
 - Handle browser verification explicitly. `browser.fetch_html()` currently calls `input()`; it cannot do that while a full-screen UI owns stdin. Either introduce a confirmation callback/modal bridge or initially leave interactive-browser checks to the CLI. Never silently change a configured fetcher or bypass verification.
 - Document concurrent CLI/TUI refresh limitations, especially the shared browser profile. A cached viewer alongside cron is much simpler than two refreshers sharing that profile.
 
-Do not implement force-refresh by casually reusing `mark_due()`: it currently changes an observation timestamp. A future UI refresh command should distinguish “check due URLs” from “force fetch” and preserve historical timestamps.
+A future UI refresh command should distinguish “check due URLs” from “force fetch” and preserve historical timestamps. `mark_due()` now persists a per-URL due marker rather than modifying observations; direct `--force` checks do not need that marker. Legacy epoch timestamps caused by older resets are displayed as unknown.
 
 ## Size and effort
 

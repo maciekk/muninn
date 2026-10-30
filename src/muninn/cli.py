@@ -475,6 +475,7 @@ def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="muninn", allow_abbrev=False, description="Cache-first product price monitor")
     parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
+    parser.add_argument("--tui", action="store_true", help="browse cached results interactively (requires the tui extra; never fetches)")
     parser.add_argument("--force", action="store_true", help="with check, fetch regardless of cache age (preserves cached data)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
@@ -511,6 +512,13 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(0)
     names = args.tracks if command in {None, "check", "reset", "import", "browser-bridge"} else [command, *args.tracks]
     try:
+        if args.tui:
+            if command in {"reset", "import", "browser-bridge"}:
+                raise ValueError("--tui is only valid with check (or omitted command)")
+            if args.force or args.long or args.zebra is not None or args.legend:
+                raise ValueError("--tui cannot be combined with --force, --long, --zebra, or --legend")
+            if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                raise ValueError("--tui requires an interactive terminal on stdin and stdout")
         if args.force and command in {"reset", "import", "browser-bridge"}:
             raise ValueError("--force is only valid with check")
         if args.vendor and command != "reset":
@@ -571,8 +579,17 @@ def main(argv: list[str] | None = None) -> None:
                 track_bounds[track_name] = track_bound
             validate_delay(args.vendor_delay)
             zebra_background = background_code(args.zebra) if args.zebra is not None else None
-            status = report(tracks, args.tracks_dir.resolve().parent, long=args.long is True, long_file=args.long if isinstance(args.long, Path) else None, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
-                            track_bounds=track_bounds or None, zebra_background=zebra_background, force=args.force)
+            if args.tui:
+                try:
+                    from .tui import run_viewer
+                except ModuleNotFoundError as exc:
+                    if exc.name != "textual" and not (exc.name or "").startswith("textual."):
+                        raise
+                    raise ValueError("--tui requires Textual; install with: uv pip install -e '.[tui]'") from exc
+                status = run_viewer(tracks, args.tracks_dir.resolve().parent, track_bounds)
+            else:
+                status = report(tracks, args.tracks_dir.resolve().parent, long=args.long is True, long_file=args.long if isinstance(args.long, Path) else None, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
+                                track_bounds=track_bounds or None, zebra_background=zebra_background, force=args.force)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     raise SystemExit(status)

@@ -18,6 +18,7 @@ muninn = "muninn.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+tui = ["textual>=0.89,<1"]
 browser = ["playwright>=1.49"]
 
 [tool.pytest.ini_options]

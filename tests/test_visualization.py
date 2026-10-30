@@ -328,6 +328,27 @@ def test_tables_style_age(monkeypatch, capsys, overview, hours, codes):
     assert expected in capsys.readouterr().out
 
 
+def test_history_plot_uses_shared_price_axis_in_input_order():
+    from muninn.visualization import price_history_plot
+
+    prices = [Decimal(100), Decimal(300), Decimal(200), Decimal(100)]
+    assert price_history_plot(prices, width=9) == [
+        '|*........|', '|........*|', '|....*....|', '|*........|',
+    ]
+    assert price_history_plot([Decimal(123)] * 3, width=9) == ['|....*....|'] * 3
+    assert price_history_plot([], width=9) == []
+    assert price_history_plot(prices, width=1) == ['|*|'] * 4
+    with pytest.raises(ValueError, match='positive'):
+        price_history_plot(prices, width=0)
+
+
+def test_history_plot_does_not_round_prices_before_scaling():
+    from muninn.visualization import price_history_plot
+
+    prices = [Decimal('100.001'), Decimal('100.002'), Decimal('100.003')]
+    assert price_history_plot(prices, width=9) == ['|*........|', '|....*....|', '|........*|']
+
+
 def test_cli_long_report_labels_legacy_reset_timestamp_unknown(capsys, monkeypatch):
     from muninn import cli
 

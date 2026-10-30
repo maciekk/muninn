@@ -43,6 +43,27 @@ def price_range(prices: list[Decimal], target: Decimal | None, bounds: tuple[Dec
     return "".join(cells)
 
 
+def price_history_plot(prices: list[Decimal], width: int = 25) -> list[str]:
+    """One ASCII point per observation on a shared historical min/max scale.
+
+    Rows retain input order; horizontal position encodes price, not elapsed time.
+    Constant prices sit at the centre rather than suggesting an upward trend.
+    """
+    if width < 1:
+        raise ValueError('plot width must be positive')
+    if not prices:
+        return []
+    low, high = min(prices), max(prices)
+    rows = []
+    for price in prices:
+        position = width // 2 if low == high else int(
+            ((price - low) / (high - low) * (width - 1)).to_integral_value(rounding=ROUND_HALF_UP))
+        cells = ['.'] * width
+        cells[position] = '*'
+        rows.append('|' + ''.join(cells) + '|')
+    return rows
+
+
 def validate_bounds(bounds: tuple[Decimal, Decimal]) -> None:
     low, high = bounds
     if not low.is_finite() or not high.is_finite() or low < 0 or low >= high:

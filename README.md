@@ -43,9 +43,23 @@ Built-in extractors support Amazon, Best Buy Canada, Canada Computers, Dell Cana
 
 See the **[usage reference](docs/usage.md)** for configuration, browser setup, report indicators, range scales, rate limiting, and refresh controls.
 
+## Interactive results viewer
+
+```sh
+uv pip install -e '.[tui]'
+muninn --tui                  # Browse all tracks; first track opens immediately
+muninn --tui monitor nvme     # Browse selected tracks
+```
+
+The optional Textual viewer reads **cached data only**. Switch tracks in the left
+sidebar (`t`), select a retailer row with arrows/mouse, and press Enter to open
+a detailed report for that vendor, including product notes and full price history.
+Escape returns, `m` toggles missing-price rows, `r` reloads
+the cache, and `q` quits. Refresh separately with `muninn check`.
+
 ## Development
 
 ```sh
-uv pip install -e '.[dev]'
+uv pip install -e '.[dev,tui]'
 uv run pytest -q
 ```

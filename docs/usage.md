@@ -8,6 +8,56 @@
 
 If refreshing fails, Muninn reports the last successful price and warns that it is stale. It never replaces a valid cached page with a failed response. During interactive checks, progress uses one updating line on stderr (including cache hits, refreshes, and failures), while the final report remains on stdout. When stderr is redirected (for example, from cron), each progress event is written as a separate line for useful logs.
 
+## Interactive cached-results viewer
+
+Install the optional dependency with `uv pip install -e '.[tui]'`, then run
+`muninn --tui` (or `muninn check --tui`). Normal CLI commands do not load Textual.
+Both stdin and stdout must be interactive terminals.
+
+The first selected track is shown immediately. A narrow left sidebar lists all
+selected tracks (all tracks by default); click a track, or press `t` and use arrows
+to switch. Enter or Tab moves focus to the comparison table. The overview retains
+one row per retailer, CLI sorting, and track/CLI range bounds. Columns adapt to
+terminal width, shortening product/vendor names first and marking clipped values
+with `…`; product details retain the full text. Zebra stripes alternate by
+product, keeping all of a product's retailer rows on the same background.
+
+- Arrows move the table cursor; Enter or a row click opens an unframed,
+  printout-style report for **only the selected retailer listing**.
+- Details retain full product information (target, rating, notes, source YAML)
+  and the selected vendor's seller information, URL, price/status, cache and
+  latest-attempt timestamps, errors/warnings, and collection settings. History
+  includes all-time numeric lows/highs and every successful priced observation
+  in a timestamped ledger with right-aligned prices and an ASCII price plot.
+  Each row's `*` uses the same historical min/max price scale (price increases
+  rightward, observations run downward; rows are not spaced by elapsed time).
+  Constant prices are centred. The plot adapts to terminal width; only the
+  sparkline is limited to the latest 40 points. Timestamps overwritten by older
+  `reset` commands are labelled `unknown (legacy reset)`, not shown as epoch dates.
+  Nothing is shortened to match the overview's column widths. Section headings
+  and key prices are emphasized; URLs, timestamps, cache notices, and collection
+  metadata are dimmed. Green/red distinguish favorable/adverse price signals,
+  and yellow highlights warnings or missing prices. Candidates with no links
+  show just the product report.
+- Escape returns without discarding table selection or scroll position.
+- `m` toggles rows without prices (hidden initially, like CLI short reports).
+  Candidates without retailer links remain visible. `⚠` marks retailer warnings.
+- `r` rereads cached observations, including while viewing details. It does not
+  reload YAML configuration; restart the viewer after editing product/track YAML.
+- `q` quits.
+
+This phase is **cache-only**: no HTTP requests, browser interactions, rate-limit
+waits, or automatic refreshing. Run `muninn check` in another terminal and press
+`r` to see its results. A cached viewer never announces `NEW LOW!` because it did
+not discover a new observation. The viewer exits successfully even if cached
+results contain warnings; normal CLI warning exit statuses are unchanged.
+
+`--tui` cannot be combined with `--force`, `--long` (including file output),
+`--legend`, `--zebra`, or non-check commands. Details and the range legend are
+available inside the viewer; CLI colour options do not control the Textual theme.
+Cache-only does not mean filesystem read-only: opening the store can initialize
+its directories/schema or migrate a legacy `.snipe/` cache.
+
 ## Track and product configuration
 
 A **track** is a class of purchase (for example, NVMe drives or monitors). Each track is a subdirectory of `./tracks/`, containing one YAML file for each viable product candidate; see [`product.yaml.example`](../product.yaml.example).

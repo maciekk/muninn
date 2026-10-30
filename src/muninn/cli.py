@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from contextlib import redirect_stdout
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import sys
 import shutil
@@ -16,13 +16,14 @@ import requests
 from . import browser, browser_bridge
 from .config import Product, Retailer, load, track_range_bounds
 from .extract import extract_price
-from .store import Observation, Store
+from .store import Store
 from .rate_limit import validate_delay, vendor_key, wait_for_vendor
 from .visualization import price_sparkline, price_range, RANGE_WIDTH, RANGE_LEGEND, DEFAULT_BOUNDS, validate_bounds
 
+from .report_data import (Checked, now, format_warning, format_retailer_warning, money,
+                          retailer_label, metrics, data_age, overview_order, read_checked, observation_timestamp)
+
 USER_AGENT = "muninn-price-monitor/0.1 (+local cache-first price checking)"
-# Suppress insignificant retailer-price fluctuations in change indicators.
-CHANGE_ALERT_THRESHOLD = Decimal("10")
 _COLOR = False
 _PROGRESS_COLOR = True
 _RESET = "\033[0m"
@@ -57,22 +58,6 @@ def background_code(value: str) -> str:
         else:
             return f"48;2;{red};{green};{blue}"
     raise ValueError("zebra colour must be an ANSI colour name, a palette index (0-255), or #RRGGBB")
-
-
-@dataclass
-class Checked:
-    retailer: Retailer
-    history: list[Observation]
-    refreshed: bool
-    warning: str | None
-
-    @property
-    def current(self) -> Observation | None:
-        return self.history[-1] if self.history else None
-
-
-def now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 _progress_active = False
@@ -141,17 +126,6 @@ def report_width() -> int:
     return max(100, shutil.get_terminal_size(fallback=(100, 24)).columns)
 
 
-def format_warning(kind: str, detail: str) -> str:
-    """Format a warning with a machine-scannable category prefix."""
-    return f"{kind}: {detail}"
-
-
-def format_retailer_warning(kind: str, product: Product, retailer: Retailer, problem: str = "") -> str:
-    """Put the vendor first so fetch problems can be recognized at a glance."""
-    detail = f"{retailer.name}: {product.name}"
-    return format_warning(kind, f"{detail}; {problem}" if problem else detail)
-
-
 def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "", force: bool = False, bridge_recovery: BridgeRecovery | None = None) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
@@ -215,58 +189,7 @@ def refresh_if_needed(store: Store, product: Product, retailer: Retailer, sessio
             status("Failed", "; keeping stale data")
     else:
         status("Cached", "; using cached data")
-    history = store.successful(retailer.url)
-    if not history and warning is None:
-        warning = format_retailer_warning("NO_CACHE", product, retailer)
-    latest = store.latest_attempt(retailer.url)
-    if latest and not latest.success and warning is None:
-        warning = format_retailer_warning("FETCH_FAILED", product, retailer, f"using stale data ({latest.error})")
-    if latest and latest.success and latest.price is None:
-        warning = format_retailer_warning("PRICE_NOT_FOUND", product, retailer, "using prior price if available")
-    return Checked(retailer, history, due and warning is None, warning)
-
-
-def money(value: Decimal, cents: bool = True) -> str:
-    """Format a monetary value, optionally rounding it for compact tables."""
-    if not cents:
-        return f"${value.quantize(Decimal(1), rounding=ROUND_HALF_UP):,.0f}"
-    value = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"${value:,.2f}"
-
-
-def retailer_label(retailer: Retailer) -> str:
-    """Return a concise report label that makes marketplace listings visible."""
-    return f"{retailer.name} [3P]" if retailer.seller_type == "third_party" else retailer.name
-
-
-def metrics(item: Checked, target: Decimal | None, bounds: tuple[Decimal, Decimal] | None = None, cents: bool = True) -> tuple[str, str, str, str]:
-    current = item.current
-    target_text = money(target, cents=cents) if target is not None else "—"
-    if not current or current.price is None:
-        return target_text, "—", price_range([], target), "NO PRICE"
-    prices = [x.price for x in item.history if x.price is not None]
-    status = "—"
-    if target is not None and current.price <= target:
-        status = "TARGET MET!"
-    elif item.refreshed and (len(prices) == 1 or current.price < min(prices[:-1])):
-        status = "NEW LOW!"
-    elif len(prices) > 1 and prices[-2] - current.price >= CHANGE_ALERT_THRESHOLD:
-        status = f"↓ {money(prices[-2] - current.price, cents=cents)}"
-    elif len(prices) > 1 and current.price > prices[-2]:
-        status = f"↑ {money(current.price - prices[-2], cents=cents)}"
-    return target_text, money(current.price, cents=cents), price_range(prices, target, bounds), status
-
-
-def data_age(item: Checked, current_time: datetime) -> str:
-    """Age of the displayed price; retain finer units until two larger units."""
-    current = item.current
-    if current is None or current.price is None:
-        return "—"
-    seconds = max(0, int((current_time - current.fetched_at).total_seconds()))
-    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
-        if seconds >= 2 * size:
-            return f"{seconds // size}{unit}"
-    return f"{seconds}s"
+    return read_checked(store, product, retailer, refreshed=due, warning=warning)
 
 
 def truncate(value: str, width: int) -> str:
@@ -370,13 +293,15 @@ def product_report(track_name: str, product: Product, checked: list[Checked], lo
         prices = [observation.price for observation in shown]
         if prices:
             print(f"  History  {price_sparkline(prices)}  latest {money(prices[-1])}")
-            dates = [observation.fetched_at.astimezone().strftime("%Y-%m-%d") for observation in shown]
+            dates = [observation.fetched_at.astimezone().strftime("%Y-%m-%d")
+                     if observation.timestamp_known else "unknown (legacy reset)" for observation in shown]
             span = dates[0] if dates[0] == dates[-1] else f"{dates[0]} → {dates[-1]}"
             count = f"{len(shown)} obs" if len(history) == len(shown) else f"last {len(shown)} of {len(history)} obs"
             print(f"           {money(min(prices))}–{money(max(prices))} · {span} · {count}")
         else:
             print("  History  —  no observations")
-        timestamp = current.fetched_at.astimezone().strftime("%Y-%m-%d %H:%M") if current else "never"
+        timestamp = (current.fetched_at.astimezone().strftime("%Y-%m-%d %H:%M")
+                     if current and current.timestamp_known else observation_timestamp(current))
         print(paint(f"  {item.retailer.url}", "dim"))
         print(paint(f"  Cached at: {timestamp}", "dim"))
 
@@ -418,12 +343,6 @@ def track_overview(name: str, results: list[tuple[Product, list[Checked]]], boun
 
     if legend:
         range_legend(bounds)
-
-def overview_order(product: Product, price: Decimal | None) -> tuple:
-    """Rating descending, then product name, then price; unrated/missing prices last."""
-    rating = product.desirability
-    return (rating is None, -rating if rating is not None else Decimal(0), product.name,
-            price is None, price if price is not None else Decimal(0))
 
 
 def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None, long_file: Path | None = None, force: bool = False) -> int:

@@ -33,6 +33,7 @@ class Product:
     retailers: tuple[Retailer, ...]
     notes: tuple[str, ...] = ()
     desirability: Decimal | None = None
+    source_path: Path | None = None
 
 
 def parse_duration(value: object) -> int:
@@ -143,5 +144,5 @@ def load(path: Path) -> tuple[Product, ...]:
         rating = _price(raw_product.get("desirability"), f"products[{index}].desirability")
         if rating is not None and rating > 10:
             raise ValueError(f"products[{index}].desirability must be between 0 and 10")
-        products.append(Product(raw_product["name"], _price(raw_product.get("target_price"), f"products[{index}].target_price"), tuple(retailers), notes, rating))
+        products.append(Product(raw_product["name"], _price(raw_product.get("target_price"), f"products[{index}].target_price"), tuple(retailers), notes, rating, path.resolve()))
     return tuple(products)

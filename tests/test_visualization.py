@@ -326,3 +326,17 @@ def test_tables_style_age(monkeypatch, capsys, overview, hours, codes):
     age = cli.data_age(item, at).rjust(4)
     expected = f'\033[{codes}m{age}\033[0m' if codes else age
     assert expected in capsys.readouterr().out
+
+
+def test_cli_long_report_labels_legacy_reset_timestamp_unknown(capsys, monkeypatch):
+    from muninn import cli
+
+    retailer = Retailer('Shop', 'https://example.com/legacy', 7200)
+    product = Product('Drive', None, (retailer,))
+    history = [Observation(datetime(1970, 1, 1, tzinfo=timezone.utc), Decimal(100), True, None)]
+    monkeypatch.setattr(cli, '_COLOR', False)
+    product_report('nvme', product, [Checked(retailer, history, False, None)], long=True)
+    report = capsys.readouterr().out
+    assert 'unknown (legacy reset)' in report
+    assert '1969' not in report and '1970' not in report
+    assert data_age(Checked(retailer, history, False, None), datetime.now(timezone.utc)) == '—'

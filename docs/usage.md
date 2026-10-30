@@ -263,7 +263,9 @@ Use `reset` to make configured URLs eligible for their next check immediately.
 It preserves observations, their timestamps, and cached pages. A persistent
 per-URL due marker is cleared by the next completed fetch attempt (success or
 failure) or HTML import; normal freshness/retry scheduling then resumes. URLs
-without any attempt are already due.
+without any attempt are already due. Older versions overwrote timestamps with
+the Unix epoch; reports label those legacy timestamps as unknown while retaining
+the price observation.
 
 ```sh
 muninn reset nvme                    # all configured retailers in the nvme track

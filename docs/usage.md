@@ -182,7 +182,7 @@ markup even if you configure a custom `price_selector` for extraction.
 
 If the worker is disconnected, verification times out, or no main price is found,
 the check reports `FETCH_FAILED` and keeps previous data. To retry immediately,
-reset Newegg again. After restarting the bridge, paste its **new token** and
+use `muninn check --force` (optionally with a track name), or reset Newegg again. After restarting the bridge, paste its **new token** and
 reconnect; after reloading the extension, reconnect too. Click **Disconnect** in
 the popup or stop the bridge with **Ctrl-C** to stop automatic collection. Keep
 one connected worker and one check at a time per project.

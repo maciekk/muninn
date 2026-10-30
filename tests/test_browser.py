@@ -252,3 +252,84 @@ def test_firefox_transport_cleanup(tmp_path, monkeypatch):
     with pytest.raises(browser.VerificationRequired):
         browser.fetch_html('https://example.com', tmp_path, browser_engine='firefox')
     assert context.close.call_count == 2
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_force_refresh_preserves_history_and_cached_fallback(tmp_path, monkeypatch, failed):
+    store = Store(tmp_path)
+    session = Mock()
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    product = Product('Drive', None, (retailer,))
+    at = datetime.now(timezone.utc)
+    html = '<meta itemprop="price" content="10.00">'
+    session.get.return_value.text = html
+    wait = Mock()
+    monkeypatch.setattr('muninn.cli.wait_for_vendor', wait)
+    try:
+        refresh_if_needed(store, product, retailer, session, at)
+        original = store.successful(retailer.url)[0]
+        original_page = next(store.pages.glob("*.html"))
+        cached = store.cache_html(retailer.url)
+        session.reset_mock()
+        wait.reset_mock()
+        refresh_if_needed(store, product, retailer, session, at + timedelta(minutes=1))
+        session.get.assert_not_called()
+        wait.assert_not_called()
+        if failed:
+            session.get.side_effect = browser.FetchError('blocked')
+        else:
+            session.get.return_value.text = '<meta itemprop="price" content="12.00">'
+        result = refresh_if_needed(store, product, retailer, session, at + timedelta(minutes=2), force=True)
+        session.get.assert_called_once()
+        wait.assert_called_once_with(store.db, retailer.url, 2.0)
+        assert store.successful(retailer.url)[0] == original
+        assert original_page.read_text() == html
+        if failed:
+            assert result.current.price == Decimal('10.00')
+            assert store.cache_html(retailer.url) == cached
+            assert 'using stale data' in result.warning
+            assert not result.refreshed
+        else:
+            assert result.current.price == Decimal('12.00')
+            assert result.refreshed
+            assert len(result.history) == 2
+    finally:
+        store.close()
+
+
+def test_force_bypasses_failed_attempt_retry_interval(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    session = Mock()
+    session.get.return_value.text = '<meta itemprop="price" content="12.00">'
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200)
+    product = Product('Drive', None, (retailer,))
+    at = datetime.now(timezone.utc)
+    monkeypatch.setattr('muninn.cli.wait_for_vendor', Mock())
+    try:
+        store.record_failure(retailer.url, product.name, retailer.name, 'blocked', at)
+        refresh_if_needed(store, product, retailer, session, at + timedelta(seconds=1))
+        session.get.assert_not_called()
+        result = refresh_if_needed(store, product, retailer, session, at + timedelta(seconds=2), force=True)
+        assert result.refreshed
+        session.get.assert_called_once()
+    finally:
+        store.close()
+
+
+def test_force_keeps_manual_import_requirement(tmp_path):
+    store = Store(tmp_path)
+    session = Mock()
+    retailer = Retailer('Shop', 'https://example.com/drive', 7200, fetcher='manual')
+    product = Product('Drive', None, (retailer,))
+    at = datetime.now(timezone.utc)
+    try:
+        path, _ = store.write_html(retailer.url, 'saved page', at)
+        store.record_success(retailer.url, product.name, retailer.name, Decimal('10'), path, at)
+        original = store.latest_attempt(retailer.url)
+        result = refresh_if_needed(store, product, retailer, session, at, force=True)
+        assert 'MANUAL_REFRESH_REQUIRED' in result.warning
+        assert result.current.price == Decimal('10')
+        assert store.latest_attempt(retailer.url) == original
+        session.get.assert_not_called()
+    finally:
+        store.close()

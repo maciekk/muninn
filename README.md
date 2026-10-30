@@ -22,6 +22,7 @@ mkdir -p tracks/monitor
 cp product.yaml.example tracks/monitor/my-monitor.yaml
 # Edit the YAML with your product and retailer URLs.
 muninn check monitor
+muninn check monitor --force   # Refresh now, regardless of cache age
 ```
 
 A **track** groups purchase candidates (such as monitors or NVMe drives). Each product gets a YAML file under `tracks/<track>/`; see [the example configuration](product.yaml.example).

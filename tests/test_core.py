@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from muninn.config import load, parse_duration
 from muninn.extract import extract_price
 from muninn.store import Store
@@ -204,7 +206,7 @@ def test_short_report_skips_no_price_rows_but_keeps_their_warnings(tmp_path, cap
     monkeypatch.setattr(
         cli,
         "refresh_if_needed",
-        lambda store, product, retailer, session, current_time, vendor_delay, track_name: cli.Checked(
+        lambda store, product, retailer, session, current_time, vendor_delay, track_name, force: cli.Checked(
             retailer, [], False, warning
         ),
     )
@@ -234,7 +236,7 @@ def test_retailer_warnings_include_clickable_url(tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(
             cli,
             "refresh_if_needed",
-            lambda store, product, retailer, session, current_time, vendor_delay, track_name: cli.Checked(
+            lambda store, product, retailer, session, current_time, vendor_delay, track_name, force: cli.Checked(
                 retailer, [], False, warning
             ),
         )
@@ -528,3 +530,31 @@ def test_extract_best_buy_does_not_use_recommendations_as_fallback():
         <script type="application/ld+json">{"offers":{"price":56}}</script>
     '''
     assert extract_price(html, "https://www.bestbuy.ca/en-ca/product/example") is None
+
+
+@pytest.mark.parametrize('command', [['check', 'monitor'], ['monitor'], []])
+def test_cli_force(tmp_path, monkeypatch, command):
+    from unittest.mock import Mock
+    from muninn import cli
+
+    for name in ('monitor', 'ssd'):
+        track = tmp_path / 'tracks' / name
+        track.mkdir(parents=True)
+        (track / 'product.yaml').write_text('name: Product\nretailers: []\n')
+    render = Mock(return_value=0)
+    monkeypatch.setattr(cli, 'report', render)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(['--tracks-dir', str(tmp_path / 'tracks'), *command, '--force'])
+    assert exc.value.code == 0
+    assert render.call_args.kwargs['force'] is True
+    assert [name for name, _ in render.call_args.args[0]] == (['monitor'] if command else ['monitor', 'ssd'])
+
+
+@pytest.mark.parametrize('command', ['reset', 'import', 'browser-bridge'])
+def test_cli_rejects_force_for_non_check_commands(command, capsys):
+    from muninn import cli
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([command, '--force'])
+    assert exc.value.code == 2
+    assert '--force is only valid with check' in capsys.readouterr().err

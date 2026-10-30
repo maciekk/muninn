@@ -126,10 +126,10 @@ def format_retailer_warning(kind: str, product: Product, retailer: Retailer, pro
     return format_warning(kind, f"{detail}; {problem}" if problem else detail)
 
 
-def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "") -> Checked:
+def refresh_if_needed(store: Store, product: Product, retailer: Retailer, session: requests.Session, current_time: datetime, vendor_delay: float = 2.0, *, track_name: str = "", force: bool = False) -> Checked:
     attempt = store.latest_attempt(retailer.url)
     refresh_seconds = retailer.retry_seconds if attempt is not None and not attempt.success else retailer.refresh_seconds
-    due = attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
+    due = force or attempt is None or (current_time - attempt.fetched_at).total_seconds() >= refresh_seconds
     warning = None
 
     def status(action: str, detail: str = "") -> None:
@@ -373,7 +373,7 @@ def overview_order(product: Product, price: Decimal | None) -> tuple:
             price is None, price if price is not None else Decimal(0))
 
 
-def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None, long_file: Path | None = None) -> int:
+def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool = False, vendor_delay: float = 2.0, bounds: tuple[Decimal, Decimal] = DEFAULT_BOUNDS, legend: bool = False, track_bounds: dict[str, tuple[Decimal, Decimal]] | None = None, zebra_background: str | None = None, long_file: Path | None = None, force: bool = False) -> int:
     store = Store(directory)
     session = requests.Session()
     warnings: dict[str, list[tuple[str, str | None]]] = {}
@@ -402,7 +402,7 @@ def report(tracks: list[tuple[str, list[Product]]], directory: Path, long: bool 
     try:
         for track_name, products in tracks:
             track_bound = (track_bounds or {}).get(track_name, bounds)
-            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay, track_name=track_name) for retailer in product.retailers]) for product in products]
+            results = [(product, [refresh_if_needed(store, product, retailer, session, now(), vendor_delay=vendor_delay, track_name=track_name, force=force) for retailer in product.retailers]) for product in products]
             collected.append((track_name, results, track_bound))
             for product, checked in results:
                 if not product.retailers:
@@ -502,6 +502,7 @@ def track_files(tracks_dir: Path, names: list[str]) -> list[tuple[str, list[Path
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="muninn", allow_abbrev=False, description="Cache-first product price monitor")
     parser.add_argument("--tracks-dir", type=Path, default=Path("tracks"), help="track directory (default: ./tracks)")
+    parser.add_argument("--force", action="store_true", help="with check, fetch regardless of cache age (preserves cached data)")
     parser.add_argument("--vendor-delay", type=float, default=2.0, metavar="SECONDS", help="minimum seconds between fetch starts per vendor (default: 2; 0 disables waiting)")
     parser.add_argument("--range-min", metavar="CAD", help="visualization lower bound (overrides track config)")
     parser.add_argument("--range-max", metavar="CAD", help="visualization upper bound (overrides track config)")
@@ -537,6 +538,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(0)
     names = args.tracks if command in {None, "check", "reset", "import", "browser-bridge"} else [command, *args.tracks]
     try:
+        if args.force and command in {"reset", "import", "browser-bridge"}:
+            raise ValueError("--force is only valid with check")
         if args.vendor and command != "reset":
             raise ValueError("--vendor is only valid with the reset command")
         if command == "import" and (not args.url or args.html is None):
@@ -596,7 +599,7 @@ def main(argv: list[str] | None = None) -> None:
             validate_delay(args.vendor_delay)
             zebra_background = background_code(args.zebra) if args.zebra is not None else None
             status = report(tracks, args.tracks_dir.resolve().parent, long=args.long is True, long_file=args.long if isinstance(args.long, Path) else None, vendor_delay=args.vendor_delay, bounds=bounds, legend=args.legend,
-                            track_bounds=track_bounds or None, zebra_background=zebra_background)
+                            track_bounds=track_bounds or None, zebra_background=zebra_background, force=args.force)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     raise SystemExit(status)

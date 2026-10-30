@@ -55,7 +55,8 @@ The optional Textual viewer reads **cached data only**. Switch tracks in the lef
 sidebar (`t`), select a retailer row with arrows/mouse, and press Enter to open
 a detailed report for that vendor, including product notes and full price history.
 Escape returns, `m` toggles missing-price rows, `r` reloads
-the cache, and `q` quits. Refresh separately with `muninn check`.
+the cache, and `q` quits. Refresh separately with `muninn check`. On macOS,
+light/dark themes automatically follow system appearance (within five seconds).
 
 ## Development
 

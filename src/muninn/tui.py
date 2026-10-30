@@ -9,9 +9,10 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.message import Message
 from textual.widgets import DataTable, Footer, Header, OptionList, Static
-from rich.text import Text
+from rich.text import Span, Text
 from rich.style import Style
 
+from .appearance import read_macos_appearance
 from .report_data import (Checked, ProductSnapshot, TrackSnapshot, data_age, metrics,
                           money, now, overview_order, read_snapshots, retailer_label, observation_timestamp)
 from .store import Observation
@@ -39,6 +40,28 @@ def fitted_widths(values: list[tuple[str, ...]], available: int) -> list[int]:
 def row_key(product: ProductSnapshot, item: Checked | None) -> str:
     return json.dumps([product.key, item.retailer.name if item else None,
                        item.retailer.url if item else None])
+
+
+DETAIL_PALETTES = {
+    'dark': {'cyan': '#66d9ef', 'blue': '#82aaff', 'green': '#7bd88f',
+             'red': '#ff8080', 'yellow': '#ffd866'},
+    'light': {'cyan': '#006b80', 'blue': '#1758a8', 'green': '#176b35',
+              'red': '#aa2436', 'yellow': '#805500'},
+}
+
+
+def adapt_report_palette(report: Text, *, dark: bool) -> Text:
+    """Retain semantic emphasis and literal content with legible theme colours."""
+    palette = DETAIL_PALETTES['dark' if dark else 'light']
+    result = report.copy()
+    spans = []
+    for span in result.spans:
+        style = Style.parse(span.style) if isinstance(span.style, str) else span.style
+        if style.color is not None and style.color.name in palette:
+            style += Style(color=palette[style.color.name])
+        spans.append(Span(span.start, span.end, style))
+    result.spans = spans
+    return result
 
 
 class DetailReport(Text):
@@ -212,6 +235,10 @@ class ProductScreen(Screen):
         yield Footer()
 
     async def on_mount(self) -> None:
+        self.app.theme_changed_signal.subscribe(self, self.on_theme_changed)
+        await self.show_details()
+
+    async def on_theme_changed(self, _theme) -> None:
         await self.show_details()
 
     def on_resize(self) -> None:
@@ -219,15 +246,20 @@ class ProductScreen(Screen):
             self.call_after_refresh(self.show_details)
 
     async def show_details(self) -> None:
-        self.query_one('#product-heading', Static).update(product_details(self.track, self.product))
+        dark = self.app.current_theme.dark
+        self.query_one('#product-heading', Static).update(
+            adapt_report_palette(product_details(self.track, self.product), dark=dark))
         item = next((item for item in self.product.checked
                      if item.retailer.url == self.selected_url and item.retailer.name == self.selected_name), None)
         report = self.query_one('#retailer-details', Static)
         report.display = item is not None or self.selected_url is not None
         if item:
-            report.update(retailer_details(item, self.track, self.product, ledger_width=max(1, self.size.width - 6)))
+            report.update(adapt_report_palette(
+                retailer_details(item, self.track, self.product, ledger_width=max(1, self.size.width - 6)), dark=dark))
         elif self.selected_url is not None:
-            report.update(Text('Selected listing is no longer available.', style='bold yellow'))
+            notice = Text('Selected listing is no longer available.')
+            notice.stylize('bold yellow')
+            report.update(adapt_report_palette(notice, dark=dark))
         else:
             report.update(Text(''))
         self.query_one('#details', VerticalScroll).focus()
@@ -284,6 +316,7 @@ class ResultsApp(App):
         self.show_missing = False
         self.rows: dict[str, tuple[ProductSnapshot, Checked | None]] = {}
         self.selections: dict[str, str] = {}
+        self.system_appearance: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -303,6 +336,17 @@ class ResultsApp(App):
         self.populate()
         table.focus()
         self.call_after_refresh(self.fit_table)
+        self.poll_appearance()
+        self.set_interval(5, self.poll_appearance)
+
+    def poll_appearance(self) -> None:
+        self.run_worker(self.sync_appearance(), group='appearance', exclusive=True, exit_on_error=False)
+
+    async def sync_appearance(self) -> None:
+        appearance = await read_macos_appearance()
+        if appearance in {'light', 'dark'} and appearance != self.system_appearance:
+            self.system_appearance = appearance
+            self.theme = f'textual-{appearance}'
 
     def on_results_table_resized(self) -> None:
         if hasattr(self, 'overview'):

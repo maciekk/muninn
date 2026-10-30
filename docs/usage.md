@@ -14,6 +14,17 @@ Install the optional dependency with `uv pip install -e '.[tui]'`, then run
 `muninn --tui` (or `muninn check --tui`). Normal CLI commands do not load Textual.
 Both stdin and stdout must be interactive terminals.
 
+On macOS the viewer automatically follows the system's light/dark appearance,
+including scheduled macOS changes, with a background check at startup and every
+five seconds. It reads macOS preferences directly, so Ghostty/tmux escape-sequence
+forwarding is not required. Tables, zebra stripes, and open Details reports switch
+live; report accents use contrasting light/dark palettes while preserving dimmed
+metadata. Navigation and scroll position are retained. Failed checks leave the
+current theme unchanged; on other platforms the default Textual theme remains.
+A manual theme chosen through Textual's command palette is retained until the next
+system appearance change. This follows appearance, not a separate time schedule,
+and does not change macOS or terminal preferences.
+
 The first selected track is shown immediately. A narrow left sidebar lists all
 selected tracks (all tracks by default); click a track, or press `t` and use arrows
 to switch. Enter or Tab moves focus to the comparison table. The overview retains

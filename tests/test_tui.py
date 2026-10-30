@@ -12,6 +12,16 @@ from muninn.store import Store
 from muninn.tui import ProductScreen, ResultsApp
 
 
+@pytest.fixture(autouse=True)
+def no_real_appearance_probe(monkeypatch):
+    from muninn import tui
+
+    async def unavailable():
+        return None
+
+    monkeypatch.setattr(tui, 'read_macos_appearance', unavailable)
+
+
 def make_app(tmp_path):
     retailers = (Retailer('Expensive [shop]', 'https://example.com/a', 1),
                  Retailer('Cheap', 'https://example.com/b', 1),
@@ -350,4 +360,125 @@ def test_detail_ledger_plot_resizes_with_terminal(tmp_path):
                 widths.append(len(row))
             assert widths[0] > widths[1]
             assert widths[2] > widths[1]
+    asyncio.run(scenario())
+
+
+def test_system_appearance_updates_live_without_losing_navigation(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from rich.console import Console
+    from muninn import tui
+    from textual.containers import VerticalScroll
+
+    async def scenario():
+        probe = AsyncMock(return_value='light')
+        monkeypatch.setattr(tui, 'read_macos_appearance', probe)
+        frozen_time = datetime.now(timezone.utc)
+        monkeypatch.setattr(tui, 'now', lambda: frozen_time)
+        app = make_app(tmp_path)
+        async with app.run_test(size=(100, 24)) as pilot:
+            await pilot.pause()
+            assert app.theme == 'textual-light'
+            assert probe.await_count >= 1  # initial check, not just the timer
+            table = app.query_one('#results', DataTable)
+            await pilot.press('down', 'enter')
+            screen = app.screen
+            scroll = screen.query_one('#details', VerticalScroll)
+            scroll.scroll_to(y=12, animate=False)
+            await pilot.pause()
+            position = scroll.scroll_y
+            report = screen.query_one('#retailer-details', Static)
+            before = report.renderable
+            before_color = before.get_style_at_offset(Console(), before.plain.index('$300.00')).color
+            assert before_color.get_truecolor().hex == tui.DETAIL_PALETTES['light']['blue']
+
+            probe.return_value = 'dark'
+            app.poll_appearance()  # same callback used by the five-second timer
+            await pilot.pause()
+            assert app.theme == 'textual-dark'
+            assert app.screen is screen
+            assert scroll.scroll_y == position
+            after = report.renderable
+            assert after.plain == before.plain
+            after_color = after.get_style_at_offset(Console(), after.plain.index('$300.00')).color
+            assert after_color.get_truecolor().hex == tui.DETAIL_PALETTES['dark']['blue']
+            assert before_color != after_color
+
+            probe.return_value = None
+            await app.sync_appearance()
+            assert app.theme == 'textual-dark'  # failed probes retain the last theme
+            probe.return_value = 'light'
+            app.poll_appearance()
+            await pilot.pause()
+            assert app.theme == 'textual-light'
+            assert scroll.scroll_y == position
+            await pilot.press('escape')
+            assert table.cursor_row == 1
+            assert table.product_groups == [0, 0, 1]
+    asyncio.run(scenario())
+
+
+def test_unchanged_system_appearance_allows_manual_theme_choice(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    from muninn import tui
+
+    async def scenario():
+        probe = AsyncMock(return_value='light')
+        monkeypatch.setattr(tui, 'read_macos_appearance', probe)
+        app = make_app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.theme == 'textual-light'
+            app.theme = 'nord'
+            await app.sync_appearance()
+            assert app.theme == 'nord'
+            probe.return_value = 'dark'
+            await app.sync_appearance()
+            assert app.theme == 'textual-dark'
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('dark', [False, True])
+def test_report_palette_preserves_content_and_emphasis(dark):
+    from rich.console import Console
+    from rich.text import Text
+    from muninn.tui import adapt_report_palette, DETAIL_PALETTES
+
+    report = Text()
+    report.append('Heading [literal]', style='bold cyan')
+    report.append('\nhttps://example.com', style='dim')
+    report.append('\nWarning', style='bold yellow')
+    original_spans = report.spans.copy()
+    themed = adapt_report_palette(report, dark=dark)
+    assert themed.plain == report.plain
+    assert report.spans == original_spans
+    assert themed.spans != original_spans
+    style = themed.get_style_at_offset(Console(), 0)
+    assert style.bold
+    assert style.color.get_truecolor().hex == DETAIL_PALETTES['dark' if dark else 'light']['cyan']
+    assert themed.get_style_at_offset(Console(), themed.plain.index('https://')).dim
+
+
+def test_slow_appearance_check_does_not_block_navigation(tmp_path, monkeypatch):
+    from muninn import tui
+
+    async def scenario():
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def slow_probe():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        monkeypatch.setattr(tui, 'read_macos_appearance', slow_probe)
+        app = make_app(tmp_path)
+        async with app.run_test() as pilot:
+            await started.wait()
+            await pilot.press('down', 'enter')
+            assert isinstance(app.screen, ProductScreen)
+            assert app.screen.selected_name == 'Expensive [shop]'
+            await pilot.press('escape', 'q')
+        assert cancelled.is_set()
     asyncio.run(scenario())

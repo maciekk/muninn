@@ -505,3 +505,39 @@ def test_product_masthead_distinguishes_it_from_unframed_listing(tmp_path, theme
             assert 'Cheap' in listing.renderable.plain
             assert 'Expensive' not in listing.renderable.plain
     asyncio.run(scenario())
+
+
+def test_diagonal_trackpad_input_does_not_reverse_details(tmp_path):
+    from textual._xterm_parser import XTermParser
+    from textual.containers import VerticalScroll
+    from muninn.tui_compat import vertical_wheel_only
+
+    async def scenario():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(80, 20)) as pilot:
+            await pilot.press('enter')
+            scroll = app.screen.query_one('#details', VerticalScroll)
+            parser = XTermParser()
+
+            async def wheel(*buttons):
+                for code in buttons:
+                    for event in parser.feed(f'\x1b[<{code};10;10M'):
+                        scroll._forward_event(event)
+                await pilot.pause()
+
+            scroll.scroll_to(y=10, animate=False, immediate=True)
+            await wheel(65, 66, 67, 66, 65)
+            assert scroll.scroll_y == 10 + 2 * app.scroll_sensitivity_y
+            for boundary, outward, inward, expected in (
+                (scroll.max_scroll_y, 65, 64, scroll.max_scroll_y - app.scroll_sensitivity_y),
+                (0, 64, 65, app.scroll_sensitivity_y),
+            ):
+                scroll.scroll_to(y=boundary, animate=False, immediate=True)
+                await wheel(*([outward, 66, 67] * 5))
+                assert scroll.scroll_y == scroll.scroll_target_y == boundary
+                assert app.screen.scroll_y == 0
+                await wheel(inward)
+                assert scroll.scroll_y == expected
+
+    with vertical_wheel_only():
+        asyncio.run(scenario())

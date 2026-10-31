@@ -71,6 +71,17 @@ available inside the viewer; CLI colour options do not control the Textual theme
 Cache-only does not mean filesystem read-only: opening the store can initialize
 its directories/schema or migrate a legacy `.snipe/` cache.
 
+### Trackpad scrolling
+
+The viewer ignores native horizontal wheel gestures. The supported Textual 0.x
+parser otherwise mistakes horizontal left/right events for vertical up/down;
+sideways drift during a vertical trackpad gesture can therefore cause flicker
+or reverse scrolling, including at the end of a report. A viewer-scoped parser
+compatibility patch discards those horizontal events while preserving vertical
+wheel input, modifiers, clicks, and pointer movement. No Ghostty or tmux settings
+need changing. Horizontal gestures do not pan tables; vertical scrolling keeps
+Textual's normal speed and behavior.
+
 ## Track and product configuration
 
 A **track** is a class of purchase (for example, NVMe drives or monitors). Each track is a subdirectory of `./tracks/`, containing one YAML file for each viable product candidate; see [`product.yaml.example`](../product.yaml.example).

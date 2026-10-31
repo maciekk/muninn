@@ -12,6 +12,7 @@ from textual.widgets import DataTable, Footer, Header, OptionList, Static
 from rich.text import Span, Text
 from rich.style import Style
 
+from .tui_compat import vertical_wheel_only
 from .appearance import read_macos_appearance
 from .report_data import (Checked, ProductSnapshot, TrackSnapshot, data_age, metrics,
                           money, now, overview_order, read_snapshots, retailer_label, observation_timestamp)
@@ -466,5 +467,6 @@ class ResultsApp(App):
 
 
 def run_viewer(tracks, directory: Path, track_bounds) -> int:
-    ResultsApp(tracks, directory, track_bounds).run()
+    with vertical_wheel_only():
+        ResultsApp(tracks, directory, track_bounds).run()
     return 0

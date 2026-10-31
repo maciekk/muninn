@@ -60,3 +60,27 @@ purchase priority, and a suggested target is not evidence of a historical low.
 **Open question:** When exact URLs/SKUs are missing from research, verify them
 before adding offers. No automatic equivalence between packaging variants has
 been established by this observation.
+
+## 2026-10-30 — Horizontal wheel codes become vertical in Textual 0.89.1
+
+**Evidence:** Feeding SGR mouse codes 66/67 (wheel left/right) into the installed
+`XTermParser` yields `MouseScrollUp`/`MouseScrollDown`: its wheel branch tests bit
+64 and then only bit 1. Textual 0.x has no horizontal wheel event classes. This
+provides a reproducible explanation for sideways trackpad gestures scrolling
+vertically, and a plausible cause of diagonal gestures flickering/reversing.
+It does not prove every first-render pause has the same cause.
+
+**Workaround:** `tui_compat.vertical_wheel_only()` discards horizontal SGR wheel
+codes, including modifier variants, only while `run_viewer()` runs. It delegates
+to the original decoder first to preserve pointer-position bookkeeping and
+restores the method on exit/failure. Tests cover stream parsing and Details
+boundaries and immediate direction reversal. Revisit/remove this private-API patch
+when changing the Textual dependency range; do not blindly carry it to versions
+with native horizontal wheel support. User-facing behavior is documented in
+[Trackpad scrolling](usage.md#trackpad-scrolling).
+
+**Validation:** Manual retesting in Ghostty confirmed that ignoring horizontal
+wheel codes resolved the reported flicker and reversed scrolling. Temporary
+timing instrumentation was removed after diagnosis. For future pointer-input
+tests, mark synthetic routed events forwarded (`_forward_event`); otherwise
+unconsumed boundary events can reach App and be routed back to the widget.

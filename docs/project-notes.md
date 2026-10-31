@@ -84,3 +84,16 @@ wheel codes resolved the reported flicker and reversed scrolling. Temporary
 timing instrumentation was removed after diagnosis. For future pointer-input
 tests, mark synthetic routed events forwarded (`_forward_event`); otherwise
 unconsumed boundary events can reach App and be routed back to the widget.
+
+## 2026-10-30 — TUI links must survive application-level wrapping
+
+**Implementation/evidence:** Listing URLs in `tui.py` carry Rich `@click`
+metadata targeting `screen.open_listing`, rather than relying on terminal URL
+recognition. Textual preserves this metadata on wrapped cells and through
+`adapt_report_palette`; a headless test clicks multiple rendered continuation
+rows and verifies the exact full URL reaches `App.open_url`. The same action
+backs `o` and checks the current listing to avoid opening stale selections.
+
+**Scope/caveat:** This changes only `--tui`, not plain `--long` output. Tests
+mock browser opening; actual browser launch and Ghostty/tmux pointer delivery
+still require manual verification. See [TUI controls](usage.md) for usage.

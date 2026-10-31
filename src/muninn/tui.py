@@ -159,7 +159,10 @@ def retailer_details(item: Checked, track: TrackSnapshot, product: ProductSnapsh
     report = DetailReport()
     report.section('RETAILER / LISTING')
     report.field('Vendor:', retailer_label(retailer), 'bold')
-    report.field('URL:', retailer.url, secondary=True)
+    report.append(f'{"URL:":<25}', style='dim')
+    report.append(retailer.url, style=Style(
+        dim=True, underline=True, meta={'@click': 'screen.open_listing'}))
+    report.line()
     if retailer.seller:
         report.field('Seller:', retailer.seller)
     if retailer.seller_type:
@@ -220,7 +223,7 @@ def retailer_details(item: Checked, track: TrackSnapshot, product: ProductSnapsh
 
 
 class ProductScreen(Screen):
-    BINDINGS = [('escape', 'back', 'Back')]
+    BINDINGS = [('escape', 'back', 'Back'), ('o', 'open_listing', 'Open listing')]
 
     def __init__(self, track: TrackSnapshot, product: ProductSnapshot, selected: Checked | None):
         super().__init__()
@@ -265,6 +268,13 @@ class ProductScreen(Screen):
         else:
             report.update(Text(''))
         self.query_one('#details', VerticalScroll).focus()
+
+    def action_open_listing(self) -> None:
+        # Resolve against current data, so reloads cannot open a removed listing.
+        item = next((item for item in self.product.checked
+                     if item.retailer.url == self.selected_url and item.retailer.name == self.selected_name), None)
+        if item is not None:
+            self.app.open_url(item.retailer.url)
 
     def action_back(self) -> None:
         self.app.pop_screen()

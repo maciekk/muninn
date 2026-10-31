@@ -52,6 +52,11 @@ product, keeping all of a product's retailer rows on the same background.
   metadata are dimmed. Green/red distinguish favorable/adverse price signals,
   and yellow highlights warnings or missing prices. Candidates with no links
   show just the product report.
+- Click the underlined listing URL (any wrapped segment), or press `o` in
+  details, to open the complete URL in your default browser. Textual handles
+  this directly, including under tmux; terminal URL detection is not needed.
+  This applies only to `--tui`; plain `--long` output and its terminal/tmux
+  URL handling are unchanged.
 - Escape returns without discarding table selection or scroll position.
 - `m` toggles rows without prices (hidden initially, like CLI short reports).
   Candidates without retailer links remain visible. `⚠` marks retailer warnings.
@@ -59,8 +64,9 @@ product, keeping all of a product's retailer rows on the same background.
   reload YAML configuration; restart the viewer after editing product/track YAML.
 - `q` quits.
 
-This phase is **cache-only**: no HTTP requests, browser interactions, rate-limit
-waits, or automatic refreshing. Run `muninn check` in another terminal and press
+This phase is **cache-only**: no fetching, automated browser interactions,
+rate-limit waits, or automatic refreshing. Opening a listing explicitly with a
+click or `o` launches your browser; it does not update cached prices. Run `muninn check` in another terminal and press
 `r` to see its results. A cached viewer never announces `NEW LOW!` because it did
 not discover a new observation. The viewer exits successfully even if cached
 results contain warnings; normal CLI warning exit statuses are unchanged.

@@ -541,3 +541,52 @@ def test_diagonal_trackpad_input_does_not_reverse_details(tmp_path):
 
     with vertical_wheel_only():
         asyncio.run(scenario())
+
+
+def test_wrapped_listing_click_and_keyboard_open_full_url(tmp_path, monkeypatch):
+    async def scenario():
+        url = 'https://example.com/' + 'long-path-segment/' * 8 + '?a=1&b=[literal]'
+        retailer = Retailer('Shop', url, 1)
+        product = Product('Product', None, (retailer,))
+        app = ResultsApp([('track', [product])], tmp_path, {})
+        opened = []
+        monkeypatch.setattr(app, 'open_url', opened.append)
+        async with app.run_test(size=(60, 40)) as pilot:
+            await pilot.press('m', 'enter')
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, ProductScreen)
+            report = screen.query_one('#retailer-details', Static).renderable
+            assert url in report.plain
+            # Inspect actual rendered cells, not just the unwrapped Text spans.
+            segments = {}
+            for y in range(screen.size.height):
+                for x in range(screen.size.width):
+                    style = screen.get_style_at(x, y)
+                    if style.meta.get('@click') == 'screen.open_listing':
+                        segments.setdefault(y, (x, y))
+            assert len(segments) >= 3
+            for point in segments.values():
+                await pilot.click(offset=point)
+                assert opened[-1] == url
+            assert len(opened) == len(segments)
+            await pilot.press('o')
+            assert opened == [url] * (len(segments) + 1)
+            # A listing removed on reload must not leave a stale open action.
+            screen.product.checked.clear()
+            await screen.show_details()
+            await pilot.press('o')
+            assert len(opened) == len(segments) + 1
+    asyncio.run(scenario())
+
+
+def test_open_listing_without_retailer_is_noop(tmp_path, monkeypatch):
+    async def scenario():
+        app = ResultsApp([('track', [Product('Candidate', None, ())])], tmp_path, {})
+        opened = []
+        monkeypatch.setattr(app, 'open_url', opened.append)
+        async with app.run_test() as pilot:
+            await pilot.press('enter', 'o')
+            assert isinstance(app.screen, ProductScreen)
+            assert opened == []
+    asyncio.run(scenario())

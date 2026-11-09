@@ -32,6 +32,12 @@ one row per retailer, CLI sorting, and track/CLI range bounds. Columns adapt to
 terminal width, shortening product/vendor names first and marking clipped values
 with `…`; product details retain the full text. Zebra stripes alternate by
 product, keeping all of a product's retailer rows on the same background.
+Product names and ratings are bold; current prices are bold blue and ranges cyan.
+In Status, price drops are bold green and increases bold red. The green `★`
+(target met) and yellow `⚠` (warning) are coloured independently of the delta;
+missing prices/links are yellow and unchanged-price dashes dimmed. Arrows and
+symbols retain their meaning without colour. Accents adapt to light/dark themes;
+the selected row uses the theme's cursor colours to keep selection legible.
 
 - Arrows move the table cursor; Enter or a row click opens an unframed,
   printout-style report for **only the selected retailer listing**.

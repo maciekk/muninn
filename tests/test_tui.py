@@ -590,3 +590,66 @@ def test_open_listing_without_retailer_is_noop(tmp_path, monkeypatch):
             assert isinstance(app.screen, ProductScreen)
             assert opened == []
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('dark', [False, True])
+@pytest.mark.parametrize('value, token, colour, bold, dim', [
+    ('↓ $0.25 ★ ⚠', '↓', 'green', True, None),
+    ('↑ $12 ★ ⚠', '↑', 'red', True, None),
+    ('↑ $12 ★ ⚠', '★', 'green', True, None),
+    ('↓ $12 ★ ⚠', '⚠', 'yellow', True, None),
+    ('— ★', '—', None, None, True),
+    ('— ★', '★', 'green', True, None),
+    ('—', '—', None, None, True),
+    ('NO PRICE ⚠', 'NO PRICE', 'yellow', True, None),
+    ('NO LINKS', 'NO LINKS', 'yellow', True, None),
+])
+def test_overview_status_styles_independent_signals(dark, value, token, colour, bold, dim):
+    from rich.console import Console
+    from muninn.tui import DETAIL_PALETTES, overview_cell
+
+    text = overview_cell('Status', value, dark=dark)
+    assert text.plain == value
+    style = text.get_style_at_offset(Console(), value.index(token))
+    assert style.bold == bold
+    assert style.dim == dim
+    if colour:
+        assert style.color.get_truecolor().hex == DETAIL_PALETTES['dark' if dark else 'light'][colour]
+    else:
+        assert style.color is None
+
+
+def test_overview_accents_retheme_without_losing_selection(tmp_path):
+    from rich.console import Console
+    from muninn.tui import DETAIL_PALETTES
+
+    async def scenario():
+        app = make_app(tmp_path)
+        store = Store(tmp_path)
+        store.record_success('https://example.com/b', 'Same name', 'Cheap', Decimal(140), '',
+                             datetime.now(timezone.utc))
+        store.record_failure('https://example.com/b', 'Same name', 'Cheap', 'offline',
+                             datetime.now(timezone.utc))
+        store.close()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press('r')
+            table = app.query_one('#results', DataTable)
+            for theme in ('textual-light', 'textual-dark'):
+                app.theme = theme
+                await pilot.pause()
+                assert table.cursor_row == 0
+                row = table.get_row_at(0)
+                palette = DETAIL_PALETTES['dark' if app.current_theme.dark else 'light']
+                assert row[0].get_style_at_offset(Console(), 0).bold
+                assert row[4].get_style_at_offset(Console(), 0).color.get_truecolor().hex == palette['blue']
+                assert row[7].plain == '↓ $10 ★ ⚠'
+                for token, colour in [('↓', 'green'), ('★', 'green'), ('⚠', 'yellow')]:
+                    style = row[7].get_style_at_offset(Console(), row[7].plain.index(token))
+                    assert style.bold
+                    assert style.color.get_truecolor().hex == palette[colour]
+            await pilot.press('down')
+            app.theme = 'textual-light'
+            await pilot.pause()
+            assert table.cursor_row == 1
+            assert table.get_row_at(1)[2].plain == 'Expensive [shop]'
+    asyncio.run(scenario())

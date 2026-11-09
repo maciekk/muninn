@@ -65,6 +65,31 @@ def adapt_report_palette(report: Text, *, dark: bool) -> Text:
     return result
 
 
+def overview_cell(column: str, value: str, *, dark: bool) -> Text:
+    """Style literal table values; status markers have independent meanings."""
+    text = Text(value, no_wrap=True)
+    if value == '—':
+        text.stylize('dim')
+    elif column == 'Status':
+        if value.startswith(('↑', '↓')):
+            delta = value.split('★')[0].split('⚠')[0].rstrip()
+            text.stylize('bold red' if value.startswith('↑') else 'bold green', 0, len(delta))
+        elif value.startswith(('NO PRICE', 'NO LINKS')):
+            text.stylize('bold yellow')
+        elif value.startswith('—'):
+            text.stylize('dim', 0, 1)
+        for index, char in enumerate(value):
+            if char in {'★', '⚠'}:
+                text.stylize('bold green' if char == '★' else 'bold yellow', index, index + 1)
+    elif column in {'Product', 'Rating'}:
+        text.stylize('bold')
+    elif column == 'Now':
+        text.stylize('bold blue')
+    elif column == 'Range':
+        text.stylize('cyan')
+    return adapt_report_palette(text, dark=dark)
+
+
 class DetailReport(Text):
     """Unframed report text with explicit semantic styles, never markup parsing."""
 
@@ -349,6 +374,7 @@ class ResultsApp(App):
 
     def on_mount(self) -> None:
         self.overview = self.screen
+        self.theme_changed_signal.subscribe(self, self.on_theme_changed)
         table = self.overview.query_one('#results', DataTable)
         self.overview.query_one('#tracks', OptionList).highlighted = 0
         self.populate()
@@ -356,6 +382,13 @@ class ResultsApp(App):
         self.call_after_refresh(self.fit_table)
         self.poll_appearance()
         self.set_interval(5, self.poll_appearance)
+
+    def on_theme_changed(self, _theme) -> None:
+        table = self.overview.query_one('#results', DataTable)
+        offset = table.scroll_offset
+        self.remember_selection()
+        self.populate()
+        self.call_after_refresh(table.scroll_to, x=offset.x, y=offset.y, animate=False)
 
     def poll_appearance(self) -> None:
         self.run_worker(self.sync_appearance(), group='appearance', exclusive=True, exit_on_error=False)
@@ -420,8 +453,8 @@ class ResultsApp(App):
             table.product_groups.append(product_groups.setdefault(snapshot.key, len(product_groups)))
             self.rows[key] = (snapshot, item)
             cells = []
-            for value, width in zip(values, widths):
-                text = Text(value, no_wrap=True)
+            for column, value, width in zip(TABLE_COLUMNS, values, widths):
+                text = overview_cell(column, value, dark=self.current_theme.dark)
                 text.truncate(width, overflow='ellipsis')
                 cells.append(text)
             table.add_row(*cells, key=key, height=max(value.count('\n') + 1 for value in values))
